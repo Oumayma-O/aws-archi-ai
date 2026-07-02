@@ -1,0 +1,20 @@
+# AWS region for deployment
+aws_region = "us-east-1"
+
+# Project name used for resource naming
+project_name = "aws-architect-ai"
+
+# Amazon Bedrock inference profile ID
+bedrock_model_id = "eu.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+# ECS task CPU units (256, 512, 1024, 2048, 4096)
+container_cpu = 512
+
+# ECS task memory in MB
+container_memory = 1024
+
+# Application log level (DEBUG, INFO, WARNING, ERROR)
+log_level = "INFO"
+
+# ACM certificate ARN for HTTPS (leave empty for HTTP only)
+certificate_arn = ""
