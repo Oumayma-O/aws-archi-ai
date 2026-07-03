@@ -5,5 +5,5 @@ hypothesis==6.131.15
 pytest==8.3.5
 pytest-cov==6.1.1
 python-dotenv==1.1.0
-diagrams==0.24.2
+diagrams==0.24.4
 watchdog==6.0.0
