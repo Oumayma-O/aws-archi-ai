@@ -1,11 +1,10 @@
 """Unit tests for services/bedrock.py.
 
-Tests client caching, exception mapping, logging, and timeout handling.
+Tests client caching, exception mapping, logging, and the Converse API call.
 """
 
 import json
 import logging
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -37,7 +36,7 @@ def mock_config():
     """Mock the load_config function to return test configuration."""
     with patch("services.bedrock.load_config") as mock:
         mock.return_value = MagicMock(
-            aws_region="us-east-1",
+            aws_region="eu-west-1",
             aws_profile=None,
         )
         yield mock
@@ -65,9 +64,9 @@ class TestGetBedrockClient:
             mock_session.client.return_value = mock_client
             mock_session_cls.return_value = mock_session
 
-            result = get_bedrock_client(region="us-west-2")
+            result = get_bedrock_client(region="eu-west-1")
 
-            mock_session_cls.assert_called_once_with(region_name="us-west-2")
+            mock_session_cls.assert_called_once_with(region_name="eu-west-1")
             assert result == mock_client
 
     def test_creates_client_with_profile(self):
@@ -78,10 +77,10 @@ class TestGetBedrockClient:
             mock_session.client.return_value = mock_client
             mock_session_cls.return_value = mock_session
 
-            get_bedrock_client(region="us-east-1", profile="dev")
+            get_bedrock_client(region="eu-west-1", profile="dev")
 
             mock_session_cls.assert_called_once_with(
-                region_name="us-east-1", profile_name="dev"
+                region_name="eu-west-1", profile_name="dev"
             )
 
     def test_caches_client_instance(self):
@@ -92,41 +91,38 @@ class TestGetBedrockClient:
             mock_session.client.return_value = mock_client
             mock_session_cls.return_value = mock_session
 
-            client1 = get_bedrock_client(region="us-east-1")
-            client2 = get_bedrock_client(region="us-east-1")
+            client1 = get_bedrock_client(region="eu-west-1")
+            client2 = get_bedrock_client(region="eu-west-1")
 
             assert client1 is client2
-            # Session should only be created once
             assert mock_session_cls.call_count == 1
 
 
 class TestInvokeModel:
-    """Tests for invoke_model function."""
+    """Tests for invoke_model function using the Converse API."""
 
-    def _make_response(self, text: str) -> dict:
-        """Create a mock Bedrock response body."""
-        body_content = json.dumps(
-            {
-                "content": [{"type": "text", "text": text}],
-                "stop_reason": "end_turn",
+    def _make_converse_response(self, text: str) -> dict:
+        """Create a mock Converse API response."""
+        return {
+            "output": {
+                "message": {
+                    "content": [{"text": text}]
+                }
             }
-        ).encode()
-        body = MagicMock()
-        body.read.return_value = body_content
-        return {"body": body}
+        }
 
     def test_successful_invocation(self, mock_config):
         """invoke_model returns response text on success."""
         with patch("services.bedrock.get_bedrock_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.invoke_model.return_value = self._make_response(
+            mock_client.converse.return_value = self._make_converse_response(
                 '{"title": "test"}'
             )
             mock_get_client.return_value = mock_client
 
             result = invoke_model(
                 prompt="Design a web app",
-                model_id="anthropic.claude-3-sonnet",
+                model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                 temperature=0.7,
             )
 
@@ -136,19 +132,19 @@ class TestInvokeModel:
         """invoke_model logs model_id and request size at INFO level."""
         with patch("services.bedrock.get_bedrock_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.invoke_model.return_value = self._make_response("ok")
+            mock_client.converse.return_value = self._make_converse_response("ok")
             mock_get_client.return_value = mock_client
 
             with caplog.at_level(logging.INFO, logger="services.bedrock"):
                 invoke_model(
                     prompt="Hello world",
-                    model_id="anthropic.claude-3-sonnet",
+                    model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     temperature=0.5,
                 )
 
             assert any(
-                "anthropic.claude-3-sonnet" in record.message
-                and "11" in record.message  # len("Hello world") == 11
+                "claude-haiku" in record.message
+                and "11" in record.message
                 for record in caplog.records
             )
 
@@ -156,15 +152,15 @@ class TestInvokeModel:
         """ReadTimeoutError is mapped to BedrockTimeoutError."""
         with patch("services.bedrock.get_bedrock_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.invoke_model.side_effect = ReadTimeoutError(
-                endpoint_url="https://bedrock.us-east-1.amazonaws.com"
+            mock_client.converse.side_effect = ReadTimeoutError(
+                endpoint_url="https://bedrock.eu-west-1.amazonaws.com"
             )
             mock_get_client.return_value = mock_client
 
             with pytest.raises(BedrockTimeoutError, match="timed out"):
                 invoke_model(
                     prompt="test",
-                    model_id="anthropic.claude-3-sonnet",
+                    model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     temperature=0.5,
                 )
 
@@ -172,15 +168,15 @@ class TestInvokeModel:
         """EndpointConnectionError is mapped to BedrockConnectionError."""
         with patch("services.bedrock.get_bedrock_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.invoke_model.side_effect = EndpointConnectionError(
-                endpoint_url="https://bedrock.us-east-1.amazonaws.com"
+            mock_client.converse.side_effect = EndpointConnectionError(
+                endpoint_url="https://bedrock.eu-west-1.amazonaws.com"
             )
             mock_get_client.return_value = mock_client
 
             with pytest.raises(BedrockConnectionError, match="connect"):
                 invoke_model(
                     prompt="test",
-                    model_id="anthropic.claude-3-sonnet",
+                    model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     temperature=0.5,
                 )
 
@@ -188,7 +184,7 @@ class TestInvokeModel:
         """botocore ConnectionError is mapped to BedrockConnectionError."""
         with patch("services.bedrock.get_bedrock_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.invoke_model.side_effect = BotocoreConnectionError(
+            mock_client.converse.side_effect = BotocoreConnectionError(
                 error="Network unreachable"
             )
             mock_get_client.return_value = mock_client
@@ -196,7 +192,7 @@ class TestInvokeModel:
             with pytest.raises(BedrockConnectionError, match="Connection error"):
                 invoke_model(
                     prompt="test",
-                    model_id="anthropic.claude-3-sonnet",
+                    model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     temperature=0.5,
                 )
 
@@ -210,16 +206,16 @@ class TestInvokeModel:
                     "Message": "Rate exceeded",
                 }
             }
-            mock_client.invoke_model.side_effect = ClientError(
+            mock_client.converse.side_effect = ClientError(
                 error_response=error_response,
-                operation_name="InvokeModel",
+                operation_name="Converse",
             )
             mock_get_client.return_value = mock_client
 
             with pytest.raises(BedrockThrottlingError, match="throttled"):
                 invoke_model(
                     prompt="test",
-                    model_id="anthropic.claude-3-sonnet",
+                    model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     temperature=0.5,
                 )
 
@@ -233,38 +229,36 @@ class TestInvokeModel:
                     "Message": "Access denied",
                 }
             }
-            mock_client.invoke_model.side_effect = ClientError(
+            mock_client.converse.side_effect = ClientError(
                 error_response=error_response,
-                operation_name="InvokeModel",
+                operation_name="Converse",
             )
             mock_get_client.return_value = mock_client
 
             with pytest.raises(BedrockConnectionError, match="AccessDeniedException"):
                 invoke_model(
                     prompt="test",
-                    model_id="anthropic.claude-3-sonnet",
+                    model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                     temperature=0.5,
                 )
 
-    def test_sends_correct_request_body(self, mock_config):
-        """invoke_model sends properly structured request body."""
+    def test_sends_correct_converse_params(self, mock_config):
+        """invoke_model sends correct parameters to client.converse()."""
         with patch("services.bedrock.get_bedrock_client") as mock_get_client:
             mock_client = MagicMock()
-            mock_client.invoke_model.return_value = self._make_response("response")
+            mock_client.converse.return_value = self._make_converse_response("response")
             mock_get_client.return_value = mock_client
 
             invoke_model(
                 prompt="Describe an architecture",
-                model_id="anthropic.claude-3-sonnet",
+                model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
                 temperature=0.8,
             )
 
-            call_kwargs = mock_client.invoke_model.call_args.kwargs
-            assert call_kwargs["modelId"] == "anthropic.claude-3-sonnet"
-            assert call_kwargs["contentType"] == "application/json"
-            assert call_kwargs["accept"] == "application/json"
-
-            body = json.loads(call_kwargs["body"])
-            assert body["temperature"] == 0.8
-            assert body["messages"][0]["content"] == "Describe an architecture"
-            assert body["anthropic_version"] == "bedrock-2023-05-31"
+            call_kwargs = mock_client.converse.call_args.kwargs
+            assert call_kwargs["modelId"] == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+            assert call_kwargs["messages"] == [
+                {"role": "user", "content": [{"text": "Describe an architecture"}]}
+            ]
+            assert call_kwargs["inferenceConfig"]["temperature"] == 0.8
+            assert call_kwargs["inferenceConfig"]["maxTokens"] == 8192
