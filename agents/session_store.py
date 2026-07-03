@@ -50,7 +50,8 @@ class SessionStore:
             table_name
             or os.environ.get("SESSION_TABLE_NAME", "architect-sessions")
         )
-        self._dynamodb = boto3.resource("dynamodb")
+        region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "eu-west-1"))
+        self._dynamodb = boto3.resource("dynamodb", region_name=region)
         self._table = self._dynamodb.Table(self._table_name)
 
     async def save(self, session: Session) -> None:

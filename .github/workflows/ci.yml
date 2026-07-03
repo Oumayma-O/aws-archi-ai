@@ -30,9 +30,12 @@ jobs:
       - name: Run tests
         env:
           AWS_REGION: eu-west-1
+          AWS_DEFAULT_REGION: eu-west-1
           BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
           SESSION_TABLE_NAME: architect-sessions
           AWS_DOCS_MCP_URL: ""
           PRICING_MCP_URL: ""
           DRAWIO_MCP_URL: ""
+          OTEL_TRACES_EXPORTER: none
+          OTEL_METRICS_EXPORTER: none
         run: pytest tests/ -v --tb=short
