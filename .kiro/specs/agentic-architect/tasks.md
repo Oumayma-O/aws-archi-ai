@@ -77,7 +77,7 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - For any ArchitectureReport, every entry in aws_services has a corresponding rationale entry
     - **Validates: Requirements 5.1, 5.5**
 
-- [~] 3. Checkpoint - Ensure all data model tests pass
+- [x] 3. Checkpoint - Ensure all data model tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 4. Implement agent events and error handling
@@ -91,8 +91,8 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - Include context fields (server_name, phase, attempts, etc.)
     - _Requirements: 8.5_
 
-- [ ] 5. Implement session store
-  - [~] 5.1 Implement agents/session_store.py with DynamoDB-backed persistence
+- [x] 5. Implement session store
+  - [x] 5.1 Implement agents/session_store.py with DynamoDB-backed persistence
     - Implement `SessionStore` class with `save()`, `load()`, `list_sessions()` methods
     - Use boto3 DynamoDB resource with table name from environment variable
     - Handle serialization of Pydantic models to/from DynamoDB items
@@ -109,16 +109,16 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - Test save, load, list_sessions, session not found, persistence error handling
     - _Requirements: 2.1, 2.4, 2.5_
 
-- [ ] 6. Implement MCP configuration
-  - [~] 6.1 Implement agents/mcp_config.py with MCP client factory functions
+- [x] 6. Implement MCP configuration
+  - [x] 6.1 Implement agents/mcp_config.py with MCP client factory functions
     - Implement `create_docs_mcp()`, `create_pricing_mcp()`, `create_drawio_mcp()` functions
     - Use Strands `MCPClient` with appropriate transports (StdioTransport or StreamableHTTPTransport)
     - Load server URLs/commands from environment variables
     - Handle connection failures gracefully
     - _Requirements: 9.3, 3.1, 4.1_
 
-- [ ] 7. Implement Clarification Agent
-  - [~] 7.1 Implement agents/clarification.py with ClarificationAgent class
+- [x] 7. Implement Clarification Agent
+  - [x] 7.1 Implement agents/clarification.py with ClarificationAgent class
     - Create Strands Agent with system prompt for requirements gathering
     - Implement `analyze_and_clarify()` method that takes description and optional existing profile
     - Generate questions for uncovered categories, omitting already-answered ones
@@ -155,8 +155,8 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
 - [~] 8. Checkpoint - Ensure clarification agent tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Implement Research Agent
-  - [~] 9.1 Implement agents/research.py with ResearchAgent class
+- [x] 9. Implement Research Agent
+  - [x] 9.1 Implement agents/research.py with ResearchAgent class
     - Create Strands Agent with MCP tool bindings (docs_mcp, pricing_mcp)
     - Implement `research()` method accepting RequirementsProfile
     - Query AWS_Docs_MCP for reference architectures, best practices, and WAF guidance
@@ -176,8 +176,8 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - For profiles with non-zero traffic, verify costs are non-zero and reference profile values
     - **Validates: Requirements 4.4**
 
-- [ ] 10. Implement Design Agent
-  - [~] 10.1 Implement agents/design.py with DesignAgent class
+- [x] 10. Implement Design Agent
+  - [x] 10.1 Implement agents/design.py with DesignAgent class
     - Create Strands Agent with system prompt for architecture design
     - Implement `design()` method accepting RequirementsProfile and ResearchSummary
     - Produce complete ArchitectureReport with services, networking, VPC, security, costs, rationale
@@ -202,8 +202,8 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - For profiles with iac_preference set, verify iac_skeleton is non-null and non-empty
     - **Validates: Requirements 12.5**
 
-- [ ] 11. Implement Diagram Agent
-  - [~] 11.1 Implement agents/diagram.py with DiagramAgent class
+- [x] 11. Implement Diagram Agent
+  - [x] 11.1 Implement agents/diagram.py with DiagramAgent class
     - Create Strands Agent with MCP tool binding (drawio_mcp)
     - Implement `generate()` method accepting ArchitectureReport
     - Produce Draw.io XML with AWS icon stencils, VPC boundaries, AZ layouts
