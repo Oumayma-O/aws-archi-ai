@@ -1,143 +1,129 @@
-"""Integration tests for Bedrock client request structure with mocked boto3."""
+"""Integration tests for Bedrock client request structure with mocked boto3.
+
+Tests verify that invoke_model sends correct parameters to the Converse API.
+"""
 
 import json
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from models.architecture import ArchitectureModel
-
 
 class TestBedrockInvokeModelRequestStructure:
-    """Test that invoke_model sends the correct request structure to Bedrock."""
+    """Test that invoke_model sends the correct request structure to Bedrock Converse API."""
 
-    def _mock_bedrock_response(self, response_text: str) -> MagicMock:
-        """Create a mocked Bedrock response with the given text."""
-        body_content = json.dumps(
-            {
-                "content": [{"type": "text", "text": response_text}],
-                "stop_reason": "end_turn",
+    def _make_converse_response(self, response_text: str) -> dict:
+        """Create a mocked Converse API response."""
+        return {
+            "output": {
+                "message": {
+                    "content": [{"text": response_text}]
+                }
             }
-        ).encode("utf-8")
-        mock_body = BytesIO(body_content)
-        return {"body": mock_body}
+        }
 
     @patch("services.bedrock.load_config")
     @patch("services.bedrock.get_bedrock_client")
     def test_invoke_model_sends_correct_model_id(
         self, mock_get_client, mock_load_config
     ):
-        """invoke_model passes the correct modelId to the Bedrock client."""
+        """invoke_model passes the correct modelId to client.converse()."""
         from services.bedrock import invoke_model
 
         mock_config = MagicMock()
-        mock_config.aws_region = "us-east-1"
+        mock_config.aws_region = "eu-west-1"
         mock_config.aws_profile = None
         mock_load_config.return_value = mock_config
 
         mock_client = MagicMock()
-        mock_client.invoke_model.return_value = self._mock_bedrock_response(
-            "Hello world"
-        )
+        mock_client.converse.return_value = self._make_converse_response("hello")
         mock_get_client.return_value = mock_client
 
         invoke_model(
             prompt="Test prompt",
-            model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
             temperature=0.7,
         )
 
-        call_kwargs = mock_client.invoke_model.call_args[1]
-        assert call_kwargs["modelId"] == "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        call_kwargs = mock_client.converse.call_args.kwargs
+        assert call_kwargs["modelId"] == "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     @patch("services.bedrock.load_config")
     @patch("services.bedrock.get_bedrock_client")
-    def test_invoke_model_sends_correct_body_structure(
+    def test_invoke_model_sends_correct_message_structure(
         self, mock_get_client, mock_load_config
     ):
-        """invoke_model sends the correct body structure with anthropic_version, max_tokens, temperature, and messages."""
+        """invoke_model sends messages with correct role and content structure."""
         from services.bedrock import invoke_model
 
         mock_config = MagicMock()
-        mock_config.aws_region = "us-east-1"
+        mock_config.aws_region = "eu-west-1"
         mock_config.aws_profile = None
         mock_load_config.return_value = mock_config
 
         mock_client = MagicMock()
-        mock_client.invoke_model.return_value = self._mock_bedrock_response(
-            "Response text"
-        )
+        mock_client.converse.return_value = self._make_converse_response("ok")
         mock_get_client.return_value = mock_client
 
         invoke_model(
             prompt="Describe a serverless API",
-            model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
             temperature=0.5,
         )
 
-        call_kwargs = mock_client.invoke_model.call_args[1]
-        body = json.loads(call_kwargs["body"])
-
-        assert body["anthropic_version"] == "bedrock-2023-05-31"
-        assert body["max_tokens"] == 4096
-        assert body["temperature"] == 0.5
-        assert body["messages"] == [
-            {"role": "user", "content": "Describe a serverless API"}
+        call_kwargs = mock_client.converse.call_args.kwargs
+        assert call_kwargs["messages"] == [
+            {"role": "user", "content": [{"text": "Describe a serverless API"}]}
         ]
 
     @patch("services.bedrock.load_config")
     @patch("services.bedrock.get_bedrock_client")
-    def test_invoke_model_sends_correct_content_type_and_accept(
+    def test_invoke_model_sends_correct_inference_config(
         self, mock_get_client, mock_load_config
     ):
-        """invoke_model sends contentType and accept as application/json."""
+        """invoke_model sends inferenceConfig with temperature and maxTokens."""
         from services.bedrock import invoke_model
 
         mock_config = MagicMock()
-        mock_config.aws_region = "us-east-1"
+        mock_config.aws_region = "eu-west-1"
         mock_config.aws_profile = None
         mock_load_config.return_value = mock_config
 
         mock_client = MagicMock()
-        mock_client.invoke_model.return_value = self._mock_bedrock_response(
-            "Some response"
-        )
+        mock_client.converse.return_value = self._make_converse_response("ok")
         mock_get_client.return_value = mock_client
 
         invoke_model(
-            prompt="Test prompt",
-            model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
-            temperature=1.0,
+            prompt="Test",
+            model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+            temperature=0.8,
         )
 
-        call_kwargs = mock_client.invoke_model.call_args[1]
-        assert call_kwargs["contentType"] == "application/json"
-        assert call_kwargs["accept"] == "application/json"
+        call_kwargs = mock_client.converse.call_args.kwargs
+        assert call_kwargs["inferenceConfig"]["temperature"] == 0.8
+        assert call_kwargs["inferenceConfig"]["maxTokens"] == 8192
 
     @patch("services.bedrock.load_config")
     @patch("services.bedrock.get_bedrock_client")
     def test_invoke_model_returns_response_text(
         self, mock_get_client, mock_load_config
     ):
-        """invoke_model returns the text content from the Bedrock response."""
+        """invoke_model returns the text content from the Converse response."""
         from services.bedrock import invoke_model
 
         mock_config = MagicMock()
-        mock_config.aws_region = "us-east-1"
+        mock_config.aws_region = "eu-west-1"
         mock_config.aws_profile = None
         mock_load_config.return_value = mock_config
 
         expected_text = '{"title": "Test Architecture"}'
         mock_client = MagicMock()
-        mock_client.invoke_model.return_value = self._mock_bedrock_response(
-            expected_text
-        )
+        mock_client.converse.return_value = self._make_converse_response(expected_text)
         mock_get_client.return_value = mock_client
 
         result = invoke_model(
             prompt="Test prompt",
-            model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
             temperature=0.7,
         )
 
@@ -152,18 +138,17 @@ class TestBedrockInvokeModelRequestStructure:
         from services.bedrock import invoke_model
 
         mock_config = MagicMock()
-        mock_config.aws_region = "us-east-1"
+        mock_config.aws_region = "eu-west-1"
         mock_config.aws_profile = None
         mock_load_config.return_value = mock_config
 
         mock_client = MagicMock()
-        mock_client.invoke_model.return_value = self._mock_bedrock_response("ok")
+        mock_client.converse.return_value = self._make_converse_response("ok")
         mock_get_client.return_value = mock_client
 
         invoke_model(prompt="Test", model_id="test-model", temperature=0.0)
-        call_kwargs = mock_client.invoke_model.call_args[1]
-        body = json.loads(call_kwargs["body"])
-        assert body["temperature"] == 0.0
+        call_kwargs = mock_client.converse.call_args.kwargs
+        assert call_kwargs["inferenceConfig"]["temperature"] == 0.0
 
     @patch("services.bedrock.load_config")
     @patch("services.bedrock.get_bedrock_client")
@@ -174,15 +159,14 @@ class TestBedrockInvokeModelRequestStructure:
         from services.bedrock import invoke_model
 
         mock_config = MagicMock()
-        mock_config.aws_region = "us-east-1"
+        mock_config.aws_region = "eu-west-1"
         mock_config.aws_profile = None
         mock_load_config.return_value = mock_config
 
         mock_client = MagicMock()
-        mock_client.invoke_model.return_value = self._mock_bedrock_response("ok")
+        mock_client.converse.return_value = self._make_converse_response("ok")
         mock_get_client.return_value = mock_client
 
         invoke_model(prompt="Test", model_id="test-model", temperature=1.0)
-        call_kwargs = mock_client.invoke_model.call_args[1]
-        body = json.loads(call_kwargs["body"])
-        assert body["temperature"] == 1.0
+        call_kwargs = mock_client.converse.call_args.kwargs
+        assert call_kwargs["inferenceConfig"]["temperature"] == 1.0

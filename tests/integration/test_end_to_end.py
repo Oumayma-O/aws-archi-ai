@@ -1,7 +1,6 @@
 """End-to-end integration tests: input → prompt → mocked response → parsed result → diagram."""
 
 import json
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 from xml.etree import ElementTree
 
@@ -202,19 +201,19 @@ class TestEndToEndPipeline:
 
         # Configure mocked config
         mock_config = MagicMock()
-        mock_config.aws_region = "us-east-1"
+        mock_config.aws_region = "eu-west-1"
         mock_config.aws_profile = None
         mock_load_config.return_value = mock_config
 
-        # Configure mocked Bedrock client
-        body_content = json.dumps(
-            {
-                "content": [{"type": "text", "text": mock_llm_architecture_json}],
-                "stop_reason": "end_turn",
-            }
-        ).encode("utf-8")
+        # Configure mocked Bedrock client (Converse API response format)
         mock_client = MagicMock()
-        mock_client.invoke_model.return_value = {"body": BytesIO(body_content)}
+        mock_client.converse.return_value = {
+            "output": {
+                "message": {
+                    "content": [{"text": mock_llm_architecture_json}]
+                }
+            }
+        }
         mock_get_client.return_value = mock_client
 
         # Step 1: Build prompt (real)
@@ -223,7 +222,7 @@ class TestEndToEndPipeline:
         # Step 2: Invoke model (mocked Bedrock)
         response_text = invoke_model(
             prompt=prompt,
-            model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            model_id="eu.anthropic.claude-haiku-4-5-20251001-v1:0",
             temperature=0.7,
         )
 
