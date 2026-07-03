@@ -1,9 +1,11 @@
 """Shared test fixtures for AWS Architect AI test suite."""
 
 import json
-from unittest.mock import MagicMock, patch
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from hypothesis import settings, HealthCheck
 
 from models.architecture import (
     ArchitectureModel,
@@ -18,6 +20,24 @@ from models.architecture import (
     ServiceCost,
     ServiceDetail,
 )
+
+
+# ---------------------------------------------------------------------------
+# Hypothesis profile configuration
+# ---------------------------------------------------------------------------
+settings.register_profile(
+    "default",
+    max_examples=100,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+settings.register_profile(
+    "ci",
+    max_examples=200,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+settings.load_profile("default")
 
 
 @pytest.fixture
@@ -103,3 +123,197 @@ def mock_bedrock_client():
     client = MagicMock()
     client.invoke_model = MagicMock()
     return client
+
+
+# ---------------------------------------------------------------------------
+# Agentic Architect fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_requirements_profile():
+    """A complete RequirementsProfile instance for testing agentic features.
+
+    Uses lazy import since models/requirements.py may not exist yet during
+    early development phases.
+    """
+    from models.requirements import (
+        ComplianceRequirement,
+        RequirementsProfile,
+        TrafficPattern,
+    )
+
+    return RequirementsProfile(
+        original_description=(
+            "I need a scalable e-commerce platform that handles 10K concurrent users "
+            "with PCI-DSS compliance and multi-region failover."
+        ),
+        compute_preference="containers",
+        budget_monthly_usd=2500.0,
+        compliance=ComplianceRequirement(
+            frameworks=["PCI-DSS", "SOC2"],
+            data_residency="eu-west-1",
+            encryption_requirements=["AES-256 at rest", "TLS 1.2 in transit"],
+        ),
+        multi_region=True,
+        disaster_recovery="warm-standby",
+        traffic=TrafficPattern(
+            peak_concurrent_users=10000,
+            requests_per_second=5000,
+            data_transfer_gb_monthly=500.0,
+            pattern="spiky",
+        ),
+        storage_requirements=["S3 for assets", "RDS for transactional data", "ElastiCache for sessions"],
+        authentication="cognito",
+        high_availability=True,
+        additional_constraints=["Must support blue-green deployments"],
+        assumptions=[],
+        target_region="eu-west-1",
+        iac_preference="cdk",
+    )
+
+
+@pytest.fixture
+def mock_docs_mcp():
+    """A MagicMock for the AWS Docs MCP client.
+
+    Simulates the MCPClient interface used by the Research Agent
+    to query AWS documentation and reference architectures.
+    """
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    # Mock the call method for tool invocations
+    mock_client.call_tool = AsyncMock(
+        return_value={
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({
+                        "reference_architectures": [
+                            {
+                                "name": "E-Commerce on AWS",
+                                "description": "Scalable e-commerce reference architecture",
+                                "url": "https://aws.amazon.com/solutions/e-commerce/",
+                            }
+                        ],
+                        "best_practices": [
+                            "Use ALB for HTTP/HTTPS traffic distribution",
+                            "Deploy across multiple AZs for high availability",
+                        ],
+                    }),
+                }
+            ]
+        }
+    )
+
+    # Mock list_tools for discovery
+    mock_client.list_tools = AsyncMock(
+        return_value=[
+            {"name": "search_docs", "description": "Search AWS documentation"},
+            {"name": "get_reference_architecture", "description": "Get reference architectures"},
+            {"name": "get_waf_guidance", "description": "Get Well-Architected guidance"},
+        ]
+    )
+
+    return mock_client
+
+
+@pytest.fixture
+def mock_pricing_mcp():
+    """A MagicMock for the Pricing MCP client.
+
+    Simulates the MCPClient interface used by the Research Agent
+    to query AWS pricing data and service cost comparisons.
+    """
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client.call_tool = AsyncMock(
+        return_value={
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({
+                        "pricing": {
+                            "service": "Amazon ECS",
+                            "region": "eu-west-1",
+                            "monthly_estimate": "$150.00",
+                            "free_tier_eligible": False,
+                            "pricing_model": "per-vCPU-hour",
+                        }
+                    }),
+                }
+            ]
+        }
+    )
+
+    mock_client.list_tools = AsyncMock(
+        return_value=[
+            {"name": "get_pricing", "description": "Get service pricing"},
+            {"name": "compare_pricing", "description": "Compare service pricing options"},
+            {"name": "estimate_monthly", "description": "Estimate monthly costs"},
+        ]
+    )
+
+    return mock_client
+
+
+@pytest.fixture
+def mock_drawio_mcp():
+    """A MagicMock for the Draw.io MCP client.
+
+    Simulates the MCPClient interface used by the Diagram Agent
+    to generate professional Draw.io diagrams with AWS icons.
+    """
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    sample_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<mxGraphModel><root>'
+        '<mxCell id="0"/>'
+        '<mxCell id="1" parent="0"/>'
+        '<mxCell id="2" value="ECS" style="shape=mxgraph.aws4.ecs" '
+        'vertex="1" parent="1"><mxGeometry x="100" y="100" width="60" height="60"/></mxCell>'
+        '</root></mxGraphModel>'
+    )
+
+    mock_client.call_tool = AsyncMock(
+        return_value={
+            "content": [
+                {
+                    "type": "text",
+                    "text": sample_xml,
+                }
+            ]
+        }
+    )
+
+    mock_client.list_tools = AsyncMock(
+        return_value=[
+            {"name": "generate_diagram", "description": "Generate Draw.io diagram"},
+            {"name": "add_aws_icons", "description": "Add AWS icons to diagram"},
+            {"name": "export_png", "description": "Export diagram as PNG"},
+        ]
+    )
+
+    return mock_client
+
+
+@pytest.fixture
+def mock_dynamodb_table():
+    """A mock DynamoDB table resource for session store testing.
+
+    Uses MagicMock to simulate boto3 DynamoDB Table operations.
+    For full integration testing, use moto fixtures instead.
+    """
+    table = MagicMock()
+    table.put_item = MagicMock(return_value={"ResponseMetadata": {"HTTPStatusCode": 200}})
+    table.get_item = MagicMock(return_value={"Item": None})
+    table.query = MagicMock(return_value={"Items": [], "Count": 0})
+    table.delete_item = MagicMock(return_value={"ResponseMetadata": {"HTTPStatusCode": 200}})
+    return table
