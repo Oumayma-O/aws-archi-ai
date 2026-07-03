@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 env:
-  AWS_REGION: us-east-1
+  AWS_REGION: eu-west-1
   ECR_REPOSITORY: aws-architect-ai
   ECS_CLUSTER: aws-architect-ai-cluster
   ECS_SERVICE: aws-architect-ai-service
