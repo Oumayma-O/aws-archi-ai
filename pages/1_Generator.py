@@ -59,13 +59,19 @@ def _render_sidebar() -> tuple[str, str, float, bool]:
 
 
 def _get_model_id(model_name: str) -> str:
-    """Map display model name to Bedrock model ID."""
+    """Map display model name to Bedrock model ID.
+    
+    Uses BEDROCK_MODEL_ID env var as the default, adjusting prefix based on region.
+    """
+    region = os.environ.get("AWS_REGION", "eu-west-1")
+    prefix = "eu" if region.startswith("eu") else "us"
+    
     model_map = {
-        "Claude Haiku 4.5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-        "Claude Sonnet 4.5": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "Claude Haiku 4.5": f"{prefix}.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "Claude Sonnet 4.5": f"{prefix}.anthropic.claude-sonnet-4-5-20250929-v1:0",
     }
     return model_map.get(model_name, os.environ.get(
-        "BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        "BEDROCK_MODEL_ID", f"{prefix}.anthropic.claude-haiku-4-5-20251001-v1:0"
     ))
 
 
