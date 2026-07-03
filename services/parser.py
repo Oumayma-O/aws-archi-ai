@@ -16,12 +16,13 @@ from services.exceptions import JsonExtractionError
 def extract_json(response_text: str) -> str:
     """Extract JSON from the response text.
 
-    With the Converse API tool calling approach, the response from invoke_model
-    is already a clean JSON string. This function validates it parses correctly
-    and falls back to brace-matching extraction if needed.
+    Handles common LLM output patterns:
+    - Clean JSON (from Converse API tool calling)
+    - JSON wrapped in markdown code fences (```json ... ```)
+    - JSON with surrounding text
 
     Args:
-        response_text: Raw text from LLM response (typically already valid JSON).
+        response_text: Raw text from LLM response.
 
     Returns:
         JSON string extracted from the response.
@@ -29,15 +30,25 @@ def extract_json(response_text: str) -> str:
     Raises:
         JsonExtractionError: If no complete JSON object is found.
     """
-    # First, try direct JSON parse (expected path with Converse API tool calling)
+    import re
+
+    # Strip markdown code fences if present
+    cleaned = response_text.strip()
+    # Remove ```json ... ``` or ``` ... ```
+    fence_pattern = re.compile(r'^```(?:json)?\s*\n?(.*?)\n?```\s*$', re.DOTALL)
+    fence_match = fence_pattern.match(cleaned)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+
+    # First, try direct JSON parse (expected path)
     try:
-        json.loads(response_text)
-        return response_text
+        json.loads(cleaned)
+        return cleaned
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # Fallback: extract by brace matching (handles wrapped text edge cases)
-    start_index = response_text.find("{")
+    # Fallback: extract by brace matching
+    start_index = cleaned.find("{")
     if start_index == -1:
         raise JsonExtractionError(
             "No JSON object found in response: no opening brace detected."
@@ -47,8 +58,8 @@ def extract_json(response_text: str) -> str:
     in_string = False
     escape_next = False
 
-    for i in range(start_index, len(response_text)):
-        char = response_text[i]
+    for i in range(start_index, len(cleaned)):
+        char = cleaned[i]
 
         if escape_next:
             escape_next = False
@@ -71,7 +82,14 @@ def extract_json(response_text: str) -> str:
         elif char == "}":
             depth -= 1
             if depth == 0:
-                return response_text[start_index : i + 1]
+                extracted = cleaned[start_index : i + 1]
+                # Validate it's actual JSON
+                try:
+                    json.loads(extracted)
+                    return extracted
+                except (json.JSONDecodeError, ValueError):
+                    # Continue looking for a valid JSON object
+                    continue
 
     raise JsonExtractionError(
         "No complete JSON object found in response: unmatched braces."
