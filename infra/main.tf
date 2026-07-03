@@ -29,9 +29,10 @@ module "ecr" {
 module "iam" {
   source = "./modules/iam"
 
-  project_name     = var.project_name
-  aws_region       = var.aws_region
-  bedrock_model_id = var.bedrock_model_id
+  project_name       = var.project_name
+  aws_region         = var.aws_region
+  bedrock_model_id   = var.bedrock_model_id
+  dynamodb_table_arn = module.dynamodb.table_arn
 }
 
 module "alb" {
@@ -42,6 +43,12 @@ module "alb" {
   public_subnets  = module.networking.public_subnet_ids
   alb_sg_id       = module.networking.alb_security_group_id
   certificate_arn = var.certificate_arn
+}
+
+module "dynamodb" {
+  source = "./modules/dynamodb"
+
+  project_name = var.project_name
 }
 
 module "ecs" {
@@ -59,4 +66,10 @@ module "ecs" {
   target_group_arn   = module.alb.target_group_arn
   execution_role_arn = module.iam.execution_role_arn
   task_role_arn      = module.iam.task_role_arn
+}
+
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  project_name = var.project_name
 }

@@ -2,13 +2,14 @@ name: CD - Deploy to AWS
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
 
 env:
   AWS_REGION: eu-west-1
   ECR_REPOSITORY: aws-architect-ai
   ECS_CLUSTER: aws-architect-ai-cluster
   ECS_SERVICE: aws-architect-ai-service
+  SESSION_TABLE_NAME: architect-sessions
 
 jobs:
   deploy:
@@ -25,6 +26,30 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Provision DynamoDB sessions table
+        run: |
+          aws dynamodb describe-table \
+            --table-name $SESSION_TABLE_NAME \
+            --region $AWS_REGION 2>/dev/null || \
+          aws dynamodb create-table \
+            --table-name $SESSION_TABLE_NAME \
+            --attribute-definitions \
+              AttributeName=session_id,AttributeType=S \
+              AttributeName=user_id,AttributeType=S \
+              AttributeName=updated_at,AttributeType=S \
+            --key-schema \
+              AttributeName=session_id,KeyType=HASH \
+            --global-secondary-indexes \
+              '[{"IndexName":"user-sessions-index","KeySchema":[{"AttributeName":"user_id","KeyType":"HASH"},{"AttributeName":"updated_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":5,"WriteCapacityUnits":5}}]' \
+            --provisioned-throughput \
+              ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --time-to-live-specification \
+              Enabled=true,AttributeName=expires_at \
+            --region $AWS_REGION
+          aws dynamodb wait table-exists \
+            --table-name $SESSION_TABLE_NAME \
+            --region $AWS_REGION
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -48,6 +73,15 @@ jobs:
             --cluster $ECS_CLUSTER \
             --service $ECS_SERVICE \
             --force-new-deployment \
+            --overrides '{
+              "containerOverrides": [{
+                "name": "aws-architect-ai",
+                "environment": [
+                  {"name": "SESSION_TABLE_NAME", "value": "'"$SESSION_TABLE_NAME"'"},
+                  {"name": "AWS_REGION", "value": "'"$AWS_REGION"'"}
+                ]
+              }]
+            }' \
             --region $AWS_REGION
 
       - name: Wait for deployment

@@ -1,0 +1,101 @@
+# Amazon Bedrock AgentCore Configuration
+# This file defines the AgentCore deployment configuration for the
+# Agentic Architect system. It is preparatory — the actual AgentCore
+# Terraform provider/API is still evolving.
+#
+# When AGENTCORE_ENABLED=true, the application connects to AgentCore API.
+# When AGENTCORE_ENABLED=false (default), agents run locally via Strands SDK.
+
+runtime:
+  name: aws-architect-ai
+  version: "1.0.0"
+  description: "Multi-turn conversational AWS Solutions Architect"
+
+model:
+  provider: bedrock
+  model_id: ${BEDROCK_MODEL_ID:-eu.anthropic.claude-sonnet-4-5-20250929-v1:0}
+  region: ${AWS_REGION:-us-east-1}
+  max_tokens: 4096
+  temperature: 0.3
+
+agents:
+  orchestrator:
+    name: orchestrator
+    description: "Top-level workflow orchestrator managing agent delegation"
+    system_prompt_file: prompts/orchestrator.md
+    tools:
+      - clarification_agent
+      - research_agent
+      - design_agent
+      - diagram_agent
+    max_turns: 50
+    timeout_seconds: 300
+
+  clarification:
+    name: clarification
+    description: "Requirements gathering via clarifying questions"
+    system_prompt_file: prompts/clarification.md
+    tools: []
+    max_turns: 10
+    timeout_seconds: 60
+
+  research:
+    name: research
+    description: "AWS documentation and pricing research via MCP"
+    system_prompt_file: prompts/research.md
+    tools:
+      - aws_docs_mcp
+      - pricing_mcp
+    max_turns: 20
+    timeout_seconds: 120
+
+  design:
+    name: design
+    description: "Architecture design and Well-Architected review"
+    system_prompt_file: prompts/design.md
+    tools: []
+    max_turns: 15
+    timeout_seconds: 120
+
+  diagram:
+    name: diagram
+    description: "Professional AWS architecture diagram generation"
+    system_prompt_file: prompts/diagram.md
+    tools:
+      - drawio_mcp
+    max_turns: 10
+    timeout_seconds: 60
+
+mcp_servers:
+  aws_docs_mcp:
+    name: aws-docs
+    transport: stdio
+    command: "npx"
+    args: ["-y", "@anthropic/aws-docs-mcp-server"]
+    description: "AWS Documentation and reference architectures"
+
+  pricing_mcp:
+    name: aws-pricing
+    transport: stdio
+    command: "npx"
+    args: ["-y", "@anthropic/aws-pricing-mcp-server"]
+    description: "AWS Pricing data and cost calculations"
+
+  drawio_mcp:
+    name: drawio
+    transport: stdio
+    command: "npx"
+    args: ["-y", "@anthropic/drawio-mcp-server"]
+    description: "Draw.io diagram generation with AWS stencils"
+
+session:
+  table_name: ${SESSION_TABLE_NAME:-architect-sessions}
+  ttl_hours: 24
+  region: ${AWS_REGION:-us-east-1}
+
+observability:
+  tracing_enabled: true
+  collector: xray
+  log_group: "/aws-architect-ai/agents"
+  log_level: ${LOG_LEVEL:-INFO}
+  prompt_logging: false  # Disable in production for cost/privacy

@@ -64,3 +64,43 @@ resource "aws_iam_role_policy_attachment" "ecs_task_bedrock" {
   role       = aws_iam_role.ecs_task.name
   policy_arn = aws_iam_policy.bedrock_invoke.arn
 }
+
+# --- DynamoDB Access for Session Persistence ---
+
+data "aws_iam_policy_document" "dynamodb_sessions" {
+  count = var.dynamodb_table_arn != "" ? 1 : 0
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:PutItem",
+      "dynamodb:GetItem",
+      "dynamodb:Query",
+      "dynamodb:DeleteItem",
+    ]
+    resources = [
+      var.dynamodb_table_arn,
+      "${var.dynamodb_table_arn}/index/*",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "dynamodb_sessions" {
+  count = var.dynamodb_table_arn != "" ? 1 : 0
+
+  name        = "${var.project_name}-dynamodb-sessions"
+  description = "Allow ECS task to access the architect-sessions DynamoDB table"
+  policy      = data.aws_iam_policy_document.dynamodb_sessions[0].json
+
+  tags = {
+    Name    = "${var.project_name}-dynamodb-sessions"
+    Project = var.project_name
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_dynamodb" {
+  count = var.dynamodb_table_arn != "" ? 1 : 0
+
+  role       = aws_iam_role.ecs_task.name
+  policy_arn = aws_iam_policy.dynamodb_sessions[0].arn
+}

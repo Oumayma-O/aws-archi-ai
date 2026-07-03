@@ -12,3 +12,9 @@ variable "bedrock_model_id" {
   description = "Amazon Bedrock model identifier for IAM policy scoping"
   type        = string
 }
+
+variable "dynamodb_table_arn" {
+  description = "ARN of the DynamoDB sessions table for IAM policy scoping"
+  type        = string
+  default     = ""
+}

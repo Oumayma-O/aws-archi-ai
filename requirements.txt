@@ -5,6 +5,7 @@ pydantic==2.11.3
 python-dotenv==1.1.0
 diagrams==0.24.4
 watchdog==6.0.0
+PyYAML==6.0.2
 
 # Agentic layer dependencies
 strands-agents==1.45.0
@@ -12,6 +13,7 @@ strands-agents-tools==0.8.2
 opentelemetry-api==1.43.0
 opentelemetry-sdk==1.43.0
 opentelemetry-exporter-otlp==1.43.0
+opentelemetry-exporter-otlp-proto-grpc==1.43.0
 
 # Testing and development dependencies
 hypothesis==6.131.15

@@ -4,7 +4,7 @@ on:
   push:
     branches: [dev, main]
   pull_request:
-    branches: [main]
+    branches: [dev, main]
 
 jobs:
   test:
@@ -25,21 +25,14 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install diagrams python-dotenv
+          pip install "moto[dynamodb]"
 
-      - name: Run unit tests
+      - name: Run tests
         env:
-          AWS_REGION: us-east-1
+          AWS_REGION: eu-west-1
           BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
-        run: pytest tests/unit/ -v --tb=short
-
-      - name: Run property tests
-        env:
-          AWS_REGION: us-east-1
-          BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
-        run: pytest tests/property/ -v --tb=short
-
-      - name: Run integration tests
-        env:
-          AWS_REGION: us-east-1
-          BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
-        run: pytest tests/integration/ -v --tb=short
+          SESSION_TABLE_NAME: architect-sessions
+          AWS_DOCS_MCP_URL: ""
+          PRICING_MCP_URL: ""
+          DRAWIO_MCP_URL: ""
+        run: pytest tests/ -v --tb=short

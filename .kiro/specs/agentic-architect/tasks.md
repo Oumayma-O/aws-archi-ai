@@ -152,7 +152,7 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - For random answer sequences (1-10 rounds), verify counter never exceeds 5
     - **Validates: Requirements 1.6**
 
-- [~] 8. Checkpoint - Ensure clarification agent tests pass
+- [x] 8. Checkpoint - Ensure clarification agent tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 9. Implement Research Agent
@@ -216,11 +216,11 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - For random DiagramData with non-empty nodes, verify well-formed XML with mxGraphModel root and mxCell per node
     - **Validates: Requirements 7.4**
 
-- [~] 12. Checkpoint - Ensure all agent tests pass
+- [x] 12. Checkpoint - Ensure all agent tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Implement Orchestrator Agent
-  - [~] 13.1 Implement agents/orchestrator.py with OrchestratorAgent class
+- [x] 13. Implement Orchestrator Agent
+  - [x] 13.1 Implement agents/orchestrator.py with OrchestratorAgent class
     - Create top-level Strands Agent using agents-as-tools pattern
     - Register ClarificationAgent, ResearchAgent, DesignAgent, DiagramAgent as tools
     - Implement `run()` async method yielding AgentEvent stream
@@ -242,15 +242,15 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - For random messages sent during RESEARCH/DESIGN/DIAGRAM_GENERATION/REVIEW, verify queued and delivered later
     - **Validates: Requirements 13.6**
 
-- [ ] 14. Implement Streamlit Chat UI (Architect Mode)
-  - [~] 14.1 Add mode selector to pages/1_Generator.py
+- [x] 14. Implement Streamlit Chat UI (Architect Mode)
+  - [x] 14.1 Add mode selector to pages/1_Generator.py
     - Add a radio/toggle UI element for "Quick Generate" vs "Architect Mode" selection
     - Wrap existing Quick Generate logic in `render_quick_generate_mode()` function
     - When "Quick Generate" selected, run existing pipeline unchanged
     - When "Architect Mode" selected, call `render_architect_mode()`
     - _Requirements: 14.1, 14.2, 14.3_
 
-  - [~] 14.2 Implement render_architect_mode() chat interface
+  - [x] 14.2 Implement render_architect_mode() chat interface
     - Use `st.chat_message()` for conversation display
     - Display full conversation history from session state
     - Implement chat input with `st.chat_input()`
@@ -266,33 +266,33 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - Verify Architect Mode initiates OrchestratorAgent workflow
     - _Requirements: 14.2, 14.3, 14.4_
 
-- [~] 15. Checkpoint - Ensure UI and orchestration tests pass
+- [x] 15. Checkpoint - Ensure UI and orchestration tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 16. Infrastructure and deployment
-  - [~] 16.1 Add DynamoDB table to Terraform infrastructure
+- [x] 16. Infrastructure and deployment
+  - [x] 16.1 Add DynamoDB table to Terraform infrastructure
     - Add `architect-sessions` DynamoDB table with partition key `session_id` (String)
     - Add GSI on `user_id` with sort key `updated_at` for listing sessions
     - Set TTL attribute on `expires_at` for automatic cleanup of old sessions
     - Add appropriate IAM permissions for ECS task role
     - _Requirements: 2.1, 2.4_
 
-  - [~] 16.2 Configure AgentCore deployment with ECS Fargate fallback
+  - [x] 16.2 Configure AgentCore deployment with ECS Fargate fallback
     - Create AgentCore configuration files for each agent (system prompts, tool bindings, model config)
     - Add environment variables for AgentCore endpoint, fallback mode flag
     - Update Dockerfile to include new agents/ package and dependencies
     - Ensure fallback to local Strands execution on ECS if AgentCore unavailable
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
 
-  - [~] 16.3 Update CI/CD pipeline for agentic features
+  - [x] 16.3 Update CI/CD pipeline for agentic features
     - Add property tests and integration tests to GitHub Actions CI workflow
     - Add environment variables for MCP server configuration
     - Ensure deployment targets `dev` branch
     - Add DynamoDB table provisioning to deploy workflow
     - _Requirements: 10.5_
 
-- [ ] 17. Implement observability
-  - [~] 17.1 Add OpenTelemetry tracing to all agents
+- [x] 17. Implement observability
+  - [x] 17.1 Add OpenTelemetry tracing to all agents
     - Configure Strands SDK built-in OTel support
     - Add trace spans for each agent invocation (agent name, phase, duration, tool calls, token usage)
     - Configure X-Ray as the trace collector backend
@@ -301,13 +301,13 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - Add option to disable prompt logging in production
     - _Requirements: 11.1, 11.2, 11.3, 11.5, 11.6_
 
-  - [~] 17.2 Create observability dashboard configuration
+  - [x] 17.2 Create observability dashboard configuration
     - Define CloudWatch dashboard JSON for: session timelines, tool invocation success rates, prompt execution durations, token consumption per session, error rates
     - Add dashboard provisioning to Terraform
     - _Requirements: 11.4_
 
-- [ ] 18. Integration wiring and final validation
-  - [~] 18.1 Wire all components together in agents/__init__.py
+- [x] 18. Integration wiring and final validation
+  - [x] 18.1 Wire all components together in agents/__init__.py
     - Export public API: `OrchestratorAgent`, `AgentEvent`, `AgentEventType`, `Session`, `WorkflowPhase`
     - Ensure proper initialization order (MCP config → agents → orchestrator)
     - Add factory function `create_architect_agent(session_id=None)` for UI consumption
@@ -321,7 +321,7 @@ Transform the existing AWS Architect AI from a single-shot generation tool into 
     - Test Quick Generate isolation (no agent instantiation)
     - _Requirements: 8.1, 8.5, 3.5, 4.5, 7.6, 14.2_
 
-- [~] 19. Final checkpoint - Ensure all tests pass
+- [x] 19. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
