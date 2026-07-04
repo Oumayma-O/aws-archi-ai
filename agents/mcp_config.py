@@ -10,16 +10,23 @@ Responsibilities:
 - Load server URLs/commands from environment variables
 - Handle connection failures gracefully
 
-Environment Variables:
-- MCP_AWS_DOCS_COMMAND: Command to start the AWS Docs MCP server
-    (default: "npx @anthropic/mcp-server-aws-docs")
-- MCP_PRICING_COMMAND: Command for the pricing server
-    (default: "npx @anthropic/mcp-server-aws-pricing")
-- MCP_DRAWIO_COMMAND: Command for the Draw.io server
-    (default: "npx @anthropic/mcp-server-drawio")
-- MCP_DOCS_URL: Alternative HTTP URL for docs MCP (if running as HTTP server)
-- MCP_PRICING_URL: Alternative HTTP URL for pricing MCP
-- MCP_DRAWIO_URL: Alternative HTTP URL for Draw.io MCP
+Environment Variables (set one per server to enable it — the orchestrator
+only creates clients for explicitly configured servers):
+- MCP_DOCS_URL: HTTP URL for the docs MCP. Recommended: the fully managed
+    AWS Knowledge MCP server, "https://knowledge-mcp.global.api.aws"
+    (no auth required, rate-limited; indexes AWS docs, What's New,
+    reference architectures, and Well-Architected guidance).
+- MCP_AWS_DOCS_COMMAND: stdio alternative — local AWS Docs server
+    (default: "uvx awslabs.aws-documentation-mcp-server@latest")
+- MCP_PRICING_COMMAND: stdio command for the AWS Pricing server
+    (default: "uvx awslabs.aws-pricing-mcp-server@latest";
+    needs AWS credentials with Price List read access)
+- MCP_PRICING_URL: HTTP alternative for pricing MCP (self-hosted)
+- MCP_DRAWIO_URL: HTTP URL for the Draw.io MCP. Recommended: the official
+    hosted endpoint "https://mcp.draw.io/mcp" (returns diagram XML as text
+    for hosts without MCP Apps support).
+- MCP_DRAWIO_COMMAND: stdio alternative — official npm package
+    (default: "npx -y @drawio/mcp")
 """
 
 from __future__ import annotations
@@ -35,10 +42,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Default commands for MCP servers (used when no URL or custom command is set)
-_DEFAULT_DOCS_COMMAND = "npx @anthropic/mcp-server-aws-docs"
-_DEFAULT_PRICING_COMMAND = "npx @anthropic/mcp-server-aws-pricing"
-_DEFAULT_DRAWIO_COMMAND = "npx @anthropic/mcp-server-drawio"
+# Default stdio commands — the real, published servers (AWS Labs on PyPI,
+# draw.io's official npm package), used when the *_COMMAND env var is set
+# without a value override.
+_DEFAULT_DOCS_COMMAND = "uvx awslabs.aws-documentation-mcp-server@latest"
+_DEFAULT_PRICING_COMMAND = "uvx awslabs.aws-pricing-mcp-server@latest"
+_DEFAULT_DRAWIO_COMMAND = "npx -y @drawio/mcp"
 
 
 def _create_mcp_client_stdio(command: str) -> "MCPClient":

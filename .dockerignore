@@ -1,0 +1,20 @@
+# Never bake local secrets/config into the image — in ECS, credentials come
+# from the task role and env vars from the task definition. A leaked .env
+# with AWS_PROFILE breaks boto3 in the container (ProfileNotFound).
+.env
+.env.*
+
+# Local dev artifacts
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.hypothesis/
+.git/
+.github/
+.claude/
+.streamlit/secrets.toml
+tests/
+*.md
+!README.md

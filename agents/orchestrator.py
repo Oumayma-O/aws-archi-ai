@@ -21,11 +21,15 @@ from collections import deque
 from datetime import datetime
 from typing import Any, AsyncIterator
 
+import os
+
 from agents.clarification import ClarificationAgent
 from agents.design import DesignAgent
 from agents.diagram import DiagramAgent
 from agents.events import AgentEvent, AgentEventType
 from agents.errors import PhaseFailureError, SessionPersistenceError
+from agents.llm import create_fast_model, create_model
+from agents.mcp_config import create_docs_mcp, create_drawio_mcp, create_pricing_mcp
 from agents.research import ResearchAgent
 from agents.session_store import SessionStore
 from models.session import ConversationMessage, Session, WorkflowPhase
@@ -72,18 +76,37 @@ class OrchestratorAgent:
     with graceful degradation, and message queuing during non-interactive phases.
     """
 
-    def __init__(self, session_id: str | None = None):
+    def __init__(self, session_id: str | None = None, model_id: str | None = None):
         """Initialize with sub-agents registered as tools.
 
         Args:
             session_id: Optional existing session to resume. If provided,
                 attempts to load from SessionStore.
+            model_id: Optional Bedrock model ID (e.g. from the UI's model
+                selector). Falls back to BEDROCK_MODEL_ID / the default in
+                agents.llm. All sub-agents share the same model instance;
+                each independently degrades to deterministic fallback logic
+                if construction fails (no Bedrock credentials, no Strands).
         """
-        # Initialize sub-agents (all support model=None for deterministic fallback)
-        self._clarification_agent = ClarificationAgent(model=None)
-        self._research_agent = ResearchAgent(model=None)
-        self._design_agent = DesignAgent(model=None)
-        self._diagram_agent = DiagramAgent(model=None)
+        model = create_model(model_id)
+        # Latency split: clarification and research are extraction/lookup
+        # tasks — pin them to Haiku regardless of the sidebar selection. The
+        # user-selected model is reserved for design + review, where quality
+        # matters most.
+        fast_model = create_fast_model() or model
+
+        # MCP clients are only created when explicitly configured via env
+        # (MCP_DOCS_URL / MCP_AWS_DOCS_COMMAND etc.) — spawning the default
+        # npx commands on machines without the servers installed would just
+        # produce dead tool providers.
+        docs_mcp = create_docs_mcp() if os.environ.get("MCP_DOCS_URL") or os.environ.get("MCP_AWS_DOCS_COMMAND") else None
+        pricing_mcp = create_pricing_mcp() if os.environ.get("MCP_PRICING_URL") or os.environ.get("MCP_PRICING_COMMAND") else None
+        drawio_mcp = create_drawio_mcp() if os.environ.get("MCP_DRAWIO_URL") or os.environ.get("MCP_DRAWIO_COMMAND") else None
+
+        self._clarification_agent = ClarificationAgent(model=fast_model)
+        self._research_agent = ResearchAgent(model=fast_model, docs_mcp=docs_mcp, pricing_mcp=pricing_mcp)
+        self._design_agent = DesignAgent(model=model)
+        self._diagram_agent = DiagramAgent(drawio_mcp=drawio_mcp)
 
         # Session store for persistence
         self._session_store = SessionStore()
@@ -211,10 +234,22 @@ class OrchestratorAgent:
         )
 
         # Run clarification agent to generate initial questions
-        result = self._clarification_agent.analyze_and_clarify(
-            description=user_message,
-            existing_profile=self._session.requirements_profile,
-        )
+        try:
+            result = self._clarification_agent.analyze_and_clarify(
+                description=user_message,
+                existing_profile=self._session.requirements_profile,
+                round_number=1,
+            )
+        except Exception as exc:
+            logger.error("Clarification failed: %s", exc)
+            yield AgentEvent(
+                type=AgentEventType.ERROR,
+                data={"phase": "clarification", "error": str(exc),
+                      "message": "The model call failed — check Bedrock credentials/region and try again."},
+                phase=WorkflowPhase.REQUIREMENTS_ANALYSIS.value,
+                timestamp=time.time(),
+            )
+            return
 
         if result.is_complete and result.profile is not None:
             # User's description was comprehensive or they signaled skip
@@ -230,12 +265,33 @@ class OrchestratorAgent:
                 yield event
 
             if result.questions:
-                questions_text = "I have a few questions to help design the best architecture for you:\n\n"
-                for i, q in enumerate(result.questions, 1):
-                    questions_text += f"{i}. {q.question}"
-                    if q.suggested_default:
-                        questions_text += f" (default: {q.suggested_default})"
-                    questions_text += "\n"
+                # Emit questions as a structured artifact for interactive UI rendering.
+                # Options come straight from the agent (LLM-chosen per question,
+                # or the fallback catalog's) — no separate lookup table to keep in sync.
+                questions_data = [
+                    {
+                        "question": q.question,
+                        "category": q.category,
+                        "suggested_default": q.suggested_default,
+                        "options": q.options,
+                    }
+                    for q in result.questions
+                ]
+
+                yield AgentEvent(
+                    type=AgentEventType.ARTIFACT,
+                    data={
+                        "type": "clarification_questions",
+                        "questions": questions_data,
+                    },
+                    phase=WorkflowPhase.CLARIFICATION.value,
+                    timestamp=time.time(),
+                )
+
+                # Also store a text version in conversation history
+                questions_text = "I have a few questions to help design the best architecture:\n"
+                for q in result.questions:
+                    questions_text += f"• {q.question}\n"
 
                 self._session.conversation_history.append(
                     ConversationMessage(
@@ -244,13 +300,6 @@ class OrchestratorAgent:
                         timestamp=datetime.utcnow(),
                         phase=WorkflowPhase.CLARIFICATION,
                     )
-                )
-
-                yield AgentEvent(
-                    type=AgentEventType.TEXT_CHUNK,
-                    data=questions_text,
-                    phase=WorkflowPhase.CLARIFICATION.value,
-                    timestamp=time.time(),
                 )
 
             self._session.clarification_rounds = 1
@@ -275,10 +324,22 @@ class OrchestratorAgent:
                 timestamp=time.time(),
             )
             # Force completion of profile
-            result = self._clarification_agent.analyze_and_clarify(
-                description=user_message,
-                existing_profile=self._session.requirements_profile,
-            )
+            try:
+                result = self._clarification_agent.analyze_and_clarify(
+                    description=user_message,
+                    existing_profile=self._session.requirements_profile,
+                    round_number=self._session.clarification_rounds,
+                )
+            except Exception as exc:
+                logger.error("Clarification finalize failed: %s", exc)
+                yield AgentEvent(
+                    type=AgentEventType.ERROR,
+                    data={"phase": "clarification", "error": str(exc),
+                          "message": "The model call failed — check Bedrock credentials/region and try again."},
+                    phase=WorkflowPhase.CLARIFICATION.value,
+                    timestamp=time.time(),
+                )
+                return
             if result.profile is not None:
                 self._session.requirements_profile = result.profile
 
@@ -287,17 +348,29 @@ class OrchestratorAgent:
             return
 
         # Run clarification with existing profile context
-        result = self._clarification_agent.analyze_and_clarify(
-            description=user_message,
-            existing_profile=self._session.requirements_profile,
-        )
+        try:
+            result = self._clarification_agent.analyze_and_clarify(
+                description=user_message,
+                existing_profile=self._session.requirements_profile,
+                round_number=self._session.clarification_rounds,
+            )
+        except Exception as exc:
+            logger.error("Clarification failed: %s", exc)
+            yield AgentEvent(
+                type=AgentEventType.ERROR,
+                data={"phase": "clarification", "error": str(exc),
+                      "message": "The model call failed — check Bedrock credentials/region and try again."},
+                phase=WorkflowPhase.CLARIFICATION.value,
+                timestamp=time.time(),
+            )
+            return
 
         if result.is_complete and result.profile is not None:
             self._session.requirements_profile = result.profile
 
             yield AgentEvent(
                 type=AgentEventType.TEXT_CHUNK,
-                data="Requirements gathered. Starting research and design phases...",
+                data="✅ Requirements gathered. Starting research and design phases...",
                 phase=WorkflowPhase.CLARIFICATION.value,
                 timestamp=time.time(),
             )
@@ -310,14 +383,31 @@ class OrchestratorAgent:
             if result.profile is not None:
                 self._session.requirements_profile = result.profile
 
-            # Present more questions
+            # Present more questions using interactive format
             if result.questions:
-                questions_text = "Thanks for the details. A few more questions:\n\n"
-                for i, q in enumerate(result.questions, 1):
-                    questions_text += f"{i}. {q.question}"
-                    if q.suggested_default:
-                        questions_text += f" (default: {q.suggested_default})"
-                    questions_text += "\n"
+                questions_data = [
+                    {
+                        "question": q.question,
+                        "category": q.category,
+                        "suggested_default": q.suggested_default,
+                        "options": q.options,
+                    }
+                    for q in result.questions
+                ]
+
+                yield AgentEvent(
+                    type=AgentEventType.ARTIFACT,
+                    data={
+                        "type": "clarification_questions",
+                        "questions": questions_data,
+                    },
+                    phase=WorkflowPhase.CLARIFICATION.value,
+                    timestamp=time.time(),
+                )
+
+                questions_text = "A few more questions:\n"
+                for q in result.questions:
+                    questions_text += f"• {q.question}\n"
 
                 self._session.conversation_history.append(
                     ConversationMessage(
@@ -338,10 +428,12 @@ class OrchestratorAgent:
             await self._persist_session()
 
     async def _run_non_interactive_phases(self) -> AsyncIterator[AgentEvent]:
-        """Run all non-interactive phases in sequence.
+        """Run all non-interactive phases.
 
-        Executes RESEARCH → DESIGN → DIAGRAM_GENERATION → REVIEW → FINAL_REPORT → COMPLETE.
-        Each phase has retry-once + degradation strategy.
+        Executes RESEARCH → DESIGN → (DIAGRAM ∥ REVIEW) → FINAL_REPORT →
+        COMPLETE. Diagram generation and the Well-Architected review both
+        depend only on the design output and are independent of each other,
+        so they run concurrently.
         """
         # --- RESEARCH ---
         async for event in self._transition_to_phase(WorkflowPhase.RESEARCH):
@@ -359,20 +451,10 @@ class OrchestratorAgent:
         ):
             yield event
 
-        # --- DIAGRAM_GENERATION ---
+        # --- DIAGRAM_GENERATION ∥ REVIEW ---
         async for event in self._transition_to_phase(WorkflowPhase.DIAGRAM_GENERATION):
             yield event
-        async for event in self._execute_phase_with_retry(
-            WorkflowPhase.DIAGRAM_GENERATION, self._run_diagram
-        ):
-            yield event
-
-        # --- REVIEW ---
-        async for event in self._transition_to_phase(WorkflowPhase.REVIEW):
-            yield event
-        async for event in self._execute_phase_with_retry(
-            WorkflowPhase.REVIEW, self._run_review
-        ):
+        async for event in self._run_diagram_and_review():
             yield event
 
         # --- FINAL_REPORT ---
@@ -524,74 +606,102 @@ class OrchestratorAgent:
             timestamp=time.time(),
         )
 
-    async def _run_diagram(self) -> AsyncIterator[AgentEvent]:
-        """Execute the diagram generation phase."""
+    async def _run_diagram_and_review(self) -> AsyncIterator[AgentEvent]:
+        """Run diagram generation and the Well-Architected review in parallel.
+
+        Both depend only on the design output and not on each other, so
+        the two blocking calls (draw.io rendering, review LLM call) run in
+        worker threads concurrently — the phase takes as long as the slower
+        of the two instead of their sum. Each side degrades independently:
+        a failure yields an ERROR event and the workflow continues.
+        """
+        import asyncio
+
         report = self._session.architecture_report
         if report is None:
-            raise PhaseFailureError(
-                "diagram_generation", 1, ValueError("No architecture report available")
+            yield AgentEvent(
+                type=AgentEventType.ERROR,
+                data={
+                    "phase": WorkflowPhase.DIAGRAM_GENERATION.value,
+                    "message": "No architecture report available for diagram/review.",
+                },
+                phase=WorkflowPhase.DIAGRAM_GENERATION.value,
+                timestamp=time.time(),
+            )
+            return
+
+        yield AgentEvent(
+            type=AgentEventType.TEXT_CHUNK,
+            data="Generating the diagram and running the Well-Architected review in parallel...",
+            phase=WorkflowPhase.DIAGRAM_GENERATION.value,
+            timestamp=time.time(),
+        )
+
+        diagram_result, review = await asyncio.gather(
+            asyncio.to_thread(self._diagram_agent.generate, report),
+            asyncio.to_thread(self._design_agent.review, report),
+            return_exceptions=True,
+        )
+
+        if isinstance(diagram_result, Exception):
+            logger.error("Diagram generation failed: %s", diagram_result)
+            yield AgentEvent(
+                type=AgentEventType.ERROR,
+                data={
+                    "phase": WorkflowPhase.DIAGRAM_GENERATION.value,
+                    "error": str(diagram_result),
+                    "message": "Diagram generation failed; continuing without a rendered diagram.",
+                },
+                phase=WorkflowPhase.DIAGRAM_GENERATION.value,
+                timestamp=time.time(),
+            )
+        else:
+            yield AgentEvent(
+                type=AgentEventType.ARTIFACT,
+                data={
+                    "type": "diagram",
+                    "format": "drawio_xml",
+                    "content": diagram_result.drawio_xml,
+                    "has_png": diagram_result.png_bytes is not None,
+                },
+                phase=WorkflowPhase.DIAGRAM_GENERATION.value,
+                timestamp=time.time(),
             )
 
-        yield AgentEvent(
-            type=AgentEventType.TEXT_CHUNK,
-            data="Generating architecture diagram...",
-            phase=WorkflowPhase.DIAGRAM_GENERATION.value,
-            timestamp=time.time(),
-        )
+        # Surface the review under its own phase so the stepper/status walk
+        # through Review — the work is already done, the transition is instant.
+        async for event in self._transition_to_phase(WorkflowPhase.REVIEW):
+            yield event
 
-        diagram_result = self._diagram_agent.generate(report)
-
-        # Emit diagram as artifact
-        yield AgentEvent(
-            type=AgentEventType.ARTIFACT,
-            data={
-                "type": "diagram",
-                "format": "drawio_xml",
-                "content": diagram_result.drawio_xml,
-                "has_png": diagram_result.png_bytes is not None,
-            },
-            phase=WorkflowPhase.DIAGRAM_GENERATION.value,
-            timestamp=time.time(),
-        )
-
-        yield AgentEvent(
-            type=AgentEventType.TEXT_CHUNK,
-            data="Architecture diagram generated successfully.",
-            phase=WorkflowPhase.DIAGRAM_GENERATION.value,
-            timestamp=time.time(),
-        )
-
-    async def _run_review(self) -> AsyncIterator[AgentEvent]:
-        """Execute the Well-Architected review phase."""
-        report = self._session.architecture_report
-        if report is None:
-            raise PhaseFailureError(
-                "review", 1, ValueError("No architecture report available")
+        if isinstance(review, Exception):
+            logger.error("Well-Architected review failed: %s", review)
+            yield AgentEvent(
+                type=AgentEventType.ERROR,
+                data={
+                    "phase": WorkflowPhase.REVIEW.value,
+                    "error": str(review),
+                    "message": "Well-Architected review failed; the report ships without it.",
+                },
+                phase=WorkflowPhase.REVIEW.value,
+                timestamp=time.time(),
             )
+            return
 
-        yield AgentEvent(
-            type=AgentEventType.TEXT_CHUNK,
-            data="Reviewing architecture against the Well-Architected Framework...",
-            phase=WorkflowPhase.REVIEW.value,
-            timestamp=time.time(),
-        )
-
-        review = self._design_agent.review(report)
         report.well_architected_review = review
         self._session.architecture_report = report
 
-        # Summarize review findings
         violations_count = len(review.violations)
         improvements_count = len(review.improvement_opportunities)
         review_text = (
-            f"Well-Architected review complete. "
-            f"Found {violations_count} violation(s) and "
+            f"Well-Architected review complete: "
+            f"{violations_count} violation(s), "
             f"{improvements_count} improvement opportunity(ies)."
         )
         if review.violations:
-            review_text += "\n\nViolations:\n" + "\n".join(
-                f"- {v}" for v in review.violations
-            )
+            top = review.violations[:5]
+            review_text += "\n\nTop violations:\n" + "\n".join(f"- {v}" for v in top)
+            if violations_count > len(top):
+                review_text += f"\n\n_…{violations_count - len(top)} more in the full report below._"
 
         yield AgentEvent(
             type=AgentEventType.TEXT_CHUNK,

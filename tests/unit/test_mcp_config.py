@@ -15,6 +15,22 @@ from agents.mcp_config import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_mcp_env(monkeypatch):
+    """Isolate tests from the developer's real .env.
+
+    load_dotenv() (triggered by other imports) can put real MCP_*_URL /
+    MCP_*_COMMAND values in the process env, which silently flips these
+    factories onto the HTTP path and defeats the stdio mocks.
+    """
+    for var in (
+        "MCP_DOCS_URL", "MCP_AWS_DOCS_COMMAND",
+        "MCP_PRICING_URL", "MCP_PRICING_COMMAND",
+        "MCP_DRAWIO_URL", "MCP_DRAWIO_COMMAND",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 class TestCreateDocsMcp:
     """Tests for create_docs_mcp factory function."""
 
@@ -150,10 +166,10 @@ class TestDefaultCommands:
     """Tests for default command constants."""
 
     def test_default_docs_command(self):
-        assert _DEFAULT_DOCS_COMMAND == "npx @anthropic/mcp-server-aws-docs"
+        assert _DEFAULT_DOCS_COMMAND == "uvx awslabs.aws-documentation-mcp-server@latest"
 
     def test_default_pricing_command(self):
-        assert _DEFAULT_PRICING_COMMAND == "npx @anthropic/mcp-server-aws-pricing"
+        assert _DEFAULT_PRICING_COMMAND == "uvx awslabs.aws-pricing-mcp-server@latest"
 
     def test_default_drawio_command(self):
-        assert _DEFAULT_DRAWIO_COMMAND == "npx @anthropic/mcp-server-drawio"
+        assert _DEFAULT_DRAWIO_COMMAND == "npx -y @drawio/mcp"

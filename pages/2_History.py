@@ -23,28 +23,94 @@ def render_history_page() -> None:
 
     history: list[dict] = st.session_state.history
 
-    if not history:
-        st.sidebar.info("No architectures have been generated in this session.")
-        st.info("No architectures have been generated in this session.")
+    if history:
+        # History is already ordered most recent first (Generator inserts at index 0)
+        titles = [_get_title(entry) for entry in history]
+
+        # Sidebar selection with architecture titles
+        selected_title = st.sidebar.selectbox(
+            "Previous Generations",
+            options=titles,
+            index=0,
+        )
+
+        # Find the selected architecture
+        selected_index = titles.index(selected_title)
+        entry = history[selected_index]
+        architecture = _get_architecture(entry)
+
+        # Display selected architecture in tabbed format
+        _display_architecture(architecture)
+    else:
+        st.info("No Quick Generate architectures in this browser session yet.")
+
+    _render_architect_sessions()
+
+
+def _render_architect_sessions() -> None:
+    """List persisted Architect Mode sessions from the DynamoDB store.
+
+    Read-only view over what the orchestrator saves after every phase
+    transition: title, phase, last activity, and — for completed sessions —
+    the stored architecture report as downloadable JSON.
+    """
+    import asyncio
+
+    st.divider()
+    st.subheader("💾 Architect Mode Sessions")
+    st.caption("Persisted across restarts (DynamoDB `architect-sessions`).")
+
+    try:
+        from agents.session_store import SessionStore
+
+        store = SessionStore()
+        summaries = asyncio.run(store.list_sessions("default"))
+    except Exception as exc:
+        st.warning(f"Session store unavailable: {exc}")
         return
 
-    # History is already ordered most recent first (Generator inserts at index 0)
-    titles = [_get_title(entry) for entry in history]
+    if not summaries:
+        st.info("No persisted sessions yet. Complete a run in Architect Mode first.")
+        return
 
-    # Sidebar selection with architecture titles
-    selected_title = st.sidebar.selectbox(
-        "Previous Generations",
-        options=titles,
-        index=0,
-    )
+    for summary in summaries[:20]:
+        label = (
+            f"{summary.title} — {summary.current_phase.value} · "
+            f"{summary.updated_at:%Y-%m-%d %H:%M}"
+        )
+        with st.expander(label):
+            st.caption(f"Session ID: `{summary.session_id}`")
+            try:
+                session = asyncio.run(store.load(summary.session_id))
+            except Exception as exc:
+                st.warning(f"Could not load session: {exc}")
+                continue
+            if session is None:
+                st.info("Session data not found.")
+                continue
 
-    # Find the selected architecture
-    selected_index = titles.index(selected_title)
-    entry = history[selected_index]
-    architecture = _get_architecture(entry)
+            report = session.architecture_report
+            if report is None:
+                st.info("No architecture report yet — session did not reach the design phase.")
+                continue
 
-    # Display selected architecture in tabbed format
-    _display_architecture(architecture)
+            # Report round-trips through JSON in DynamoDB, so it arrives as
+            # a plain dict here.
+            title = report.get("title", "Architecture Report") if isinstance(report, dict) else str(report)
+            summary_text = report.get("summary", "") if isinstance(report, dict) else ""
+            st.markdown(f"**{title}**")
+            if summary_text:
+                st.write(summary_text.replace("$", "\\$"))
+
+            import json
+
+            st.download_button(
+                "📋 Download report JSON",
+                data=json.dumps(report, indent=2, default=str),
+                file_name=f"architecture_{summary.session_id[:8]}.json",
+                mime="application/json",
+                key=f"dl_{summary.session_id}",
+            )
 
 
 def _get_title(entry: dict | ArchitectureModel) -> str:

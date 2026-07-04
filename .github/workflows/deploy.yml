@@ -68,20 +68,14 @@ jobs:
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
       - name: Deploy to ECS
+        # Environment (SESSION_TABLE_NAME, AWS_REGION, …) lives in the task
+        # definition; update-service has no --overrides parameter (that is a
+        # run-task flag — using it here failed the deploy).
         run: |
           aws ecs update-service \
             --cluster $ECS_CLUSTER \
             --service $ECS_SERVICE \
             --force-new-deployment \
-            --overrides '{
-              "containerOverrides": [{
-                "name": "aws-architect-ai",
-                "environment": [
-                  {"name": "SESSION_TABLE_NAME", "value": "'"$SESSION_TABLE_NAME"'"},
-                  {"name": "AWS_REGION", "value": "'"$AWS_REGION"'"}
-                ]
-              }]
-            }' \
             --region $AWS_REGION
 
       - name: Wait for deployment

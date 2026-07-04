@@ -157,14 +157,156 @@ def to_mermaid(
     return "\n".join(lines)
 
 
+# draw.io AWS 2017+ shape library (mxgraph.aws4) — bundled in app.diagrams.net.
+# Maps a lowercase keyword found in aws_service to (resIcon suffix, category color).
+# Category colors follow the official AWS architecture-icon palette.
+_AWS4_ICONS: list[tuple[str, str, str]] = [
+    ("lambda", "lambda", "#ED7100"),
+    ("fargate", "fargate", "#ED7100"),
+    ("ecs", "elastic_container_service", "#ED7100"),
+    ("eks", "elastic_kubernetes_service", "#ED7100"),
+    ("ec2", "ec2", "#ED7100"),
+    ("api gateway", "api_gateway", "#E7157B"),
+    ("apigateway", "api_gateway", "#E7157B"),
+    ("dynamodb", "dynamodb", "#C925D1"),
+    ("aurora", "aurora", "#C925D1"),
+    ("rds", "rds", "#C925D1"),
+    ("elasticache", "elasticache", "#C925D1"),
+    ("s3", "s3", "#7AA116"),
+    ("efs", "elastic_file_system", "#7AA116"),
+    ("cloudfront", "cloudfront", "#8C4FFF"),
+    ("route 53", "route_53", "#8C4FFF"),
+    ("route53", "route_53", "#8C4FFF"),
+    ("elb", "elastic_load_balancing", "#8C4FFF"),
+    ("alb", "elastic_load_balancing", "#8C4FFF"),
+    ("load balancer", "elastic_load_balancing", "#8C4FFF"),
+    ("vpc", "vpc", "#8C4FFF"),
+    ("waf", "waf", "#DD344C"),
+    ("cognito", "cognito", "#DD344C"),
+    ("iam", "identity_and_access_management", "#DD344C"),
+    ("kms", "key_management_service", "#DD344C"),
+    ("secrets manager", "secrets_manager", "#DD344C"),
+    ("secretsmanager", "secrets_manager", "#DD344C"),
+    ("shield", "shield", "#DD344C"),
+    ("cloudwatch", "cloudwatch", "#E7157B"),
+    ("cloudtrail", "cloudtrail", "#E7157B"),
+    ("x-ray", "xray", "#E7157B"),
+    ("xray", "xray", "#E7157B"),
+    ("sns", "simple_notification_service", "#E7157B"),
+    ("sqs", "simple_queue_service", "#E7157B"),
+    ("eventbridge", "eventbridge", "#E7157B"),
+    ("step functions", "step_functions", "#E7157B"),
+    ("kinesis", "kinesis", "#8C4FFF"),
+    ("athena", "athena", "#8C4FFF"),
+    ("glue", "glue", "#8C4FFF"),
+    ("sagemaker", "sagemaker", "#01A88D"),
+    ("bedrock", "bedrock", "#01A88D"),
+    ("amplify", "amplify", "#DD344C"),
+]
+
+_AWS4_RESOURCE_STYLE = (
+    "sketch=0;points=[[0,0,0],[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0,0],"
+    "[0,1,0],[0.25,1,0],[0.5,1,0],[0.75,1,0],[1,1,0],[0,0.25,0],[0,0.5,0],"
+    "[0,0.75,0],[1,0.25,0],[1,0.5,0],[1,0.75,0]];"
+    "outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor={color};"
+    "strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;"
+    "align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;"
+    "shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.{icon};"
+)
+
+_AWS4_USERS_STYLE = (
+    "sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;"
+    "fillColor=#232F3E;strokeColor=none;dashed=0;verticalLabelPosition=bottom;"
+    "verticalAlign=top;align=center;html=1;shape=mxgraph.aws4.users;"
+)
+
+_DRAWIO_EDGE_STYLE = (
+    "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;"
+    "labelBackgroundColor=#FFFFFF;strokeColor=#545B64;jettySize=auto;"
+    "orthogonalLoop=1;"
+)
+
+
+def _drawio_node_style(node: DiagramNode) -> str:
+    """Pick the AWS shape style for a node."""
+    haystack = f"{node.aws_service} {node.label}".lower()
+    if "user" in haystack or "client" in haystack or "external" in haystack:
+        return _AWS4_USERS_STYLE
+    for keyword, icon, color in _AWS4_ICONS:
+        if keyword in haystack:
+            return _AWS4_RESOURCE_STYLE.format(color=color, icon=icon)
+    # Unknown service: generic AWS resource card in the service's brand color
+    return (
+        f"rounded=1;whiteSpace=wrap;html=1;fillColor={_get_service_color(node.aws_service)};"
+        "fontColor=#ffffff;strokeColor=none;fontSize=12;"
+    )
+
+
+def _layered_positions(
+    nodes: list[DiagramNode], connections: list[DiagramConnection]
+) -> dict[str, tuple[int, int]]:
+    """Assign top-down layered positions via BFS from in-degree-0 roots.
+
+    Mirrors the request flow of the PNG renderer: sources (Users, Route 53)
+    on top, data stores and monitoring toward the bottom. Prevents the
+    label-soup that a naive grid produces in the draw.io editor.
+    """
+    node_ids = [n.id for n in nodes]
+    id_set = set(node_ids)
+    adjacency: dict[str, list[str]] = {nid: [] for nid in node_ids}
+    in_degree: dict[str, int] = {nid: 0 for nid in node_ids}
+    for conn in connections:
+        if conn.source_id in id_set and conn.target_id in id_set:
+            adjacency[conn.source_id].append(conn.target_id)
+            in_degree[conn.target_id] += 1
+
+    roots = [nid for nid in node_ids if in_degree[nid] == 0] or node_ids[:1]
+
+    layer_of: dict[str, int] = {}
+    frontier = list(roots)
+    depth = 0
+    while frontier:
+        next_frontier: list[str] = []
+        for nid in frontier:
+            if nid in layer_of:
+                continue
+            layer_of[nid] = depth
+            next_frontier.extend(adjacency[nid])
+        frontier = next_frontier
+        depth += 1
+
+    # Anything unreached (cycles, orphans) goes below the deepest layer
+    max_layer = max(layer_of.values(), default=0)
+    for nid in node_ids:
+        layer_of.setdefault(nid, max_layer + 1)
+
+    layers: dict[int, list[str]] = {}
+    for nid in node_ids:  # preserve node order within a layer
+        layers.setdefault(layer_of[nid], []).append(nid)
+
+    x_spacing, y_spacing, icon_w = 220, 170, 78
+    widest = max(len(members) for members in layers.values())
+    canvas_center = (widest * x_spacing) // 2 + 60
+
+    positions: dict[str, tuple[int, int]] = {}
+    for layer, members in sorted(layers.items()):
+        row_width = (len(members) - 1) * x_spacing
+        start_x = canvas_center - row_width // 2 - icon_w // 2
+        for i, nid in enumerate(members):
+            positions[nid] = (start_x + i * x_spacing, 60 + layer * y_spacing)
+    return positions
+
+
 def to_drawio_xml(
     nodes: list[DiagramNode], connections: list[DiagramConnection]
 ) -> str:
     """Convert nodes and connections to Draw.io mxGraphModel XML.
 
-    Produces well-formed XML with an mxGraphModel root element containing
-    one mxCell per node and one mxCell edge per connection. Connections
-    referencing non-existent node IDs are skipped with a warning logged.
+    Emits official AWS architecture icons (draw.io's bundled mxgraph.aws4
+    shape library) laid out top-down by request flow, so the exported
+    diagram matches the in-app PNG instead of a grid of generic boxes.
+    Connections referencing non-existent node IDs are skipped with a
+    warning logged.
 
     Args:
         nodes: List of diagram nodes.
@@ -177,6 +319,7 @@ def to_drawio_xml(
         return ""
 
     node_ids = {node.id for node in nodes}
+    positions = _layered_positions(nodes, connections)
 
     # Build XML structure
     root = ET.Element("mxGraphModel")
@@ -186,25 +329,14 @@ def to_drawio_xml(
     ET.SubElement(root_cell, "mxCell", id="0")
     ET.SubElement(root_cell, "mxCell", id="1", parent="0")
 
-    # Node cells
-    x_offset = 100
-    y_offset = 100
-    node_spacing_x = 200
-    node_spacing_y = 150
-    nodes_per_row = 3
-
-    for i, node in enumerate(nodes):
-        row = i // nodes_per_row
-        col = i % nodes_per_row
-        x = x_offset + col * node_spacing_x
-        y = y_offset + row * node_spacing_y
-
+    for node in nodes:
+        x, y = positions[node.id]
         cell = ET.SubElement(
             root_cell,
             "mxCell",
             id=node.id,
-            value=f"{node.label} ({node.aws_service})",
-            style="rounded=1;whiteSpace=wrap;html=1;",
+            value=node.label,
+            style=_drawio_node_style(node),
             vertex="1",
             parent="1",
         )
@@ -213,8 +345,8 @@ def to_drawio_xml(
             "mxGeometry",
             x=str(x),
             y=str(y),
-            width="160",
-            height="60",
+            width="78",
+            height="78",
         ).set("as", "geometry")
 
     # Edge cells
@@ -238,7 +370,7 @@ def to_drawio_xml(
 
         edge_attrs: dict[str, str] = {
             "id": edge_id,
-            "style": "edgeStyle=orthogonalEdgeStyle;",
+            "style": _DRAWIO_EDGE_STYLE,
             "edge": "1",
             "source": conn.source_id,
             "target": conn.target_id,
