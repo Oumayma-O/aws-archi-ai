@@ -6,10 +6,18 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    awscc = {
+      source  = "hashicorp/awscc"
+      version = ">= 1.58.0"
+    }
   }
 }
 
 provider "aws" {
+  region = var.aws_region
+}
+
+provider "awscc" {
   region = var.aws_region
 }
 
@@ -72,4 +80,17 @@ module "monitoring" {
   source = "./modules/monitoring"
 
   project_name = var.project_name
+}
+
+module "agentcore" {
+  source = "./modules/agentcore"
+  count  = var.enable_agentcore ? 1 : 0
+
+  project_name       = var.project_name
+  aws_region         = var.aws_region
+  bedrock_model_id   = var.bedrock_model_id
+  ecr_repository_url = module.ecr.repository_url
+  ecr_repository_arn = module.ecr.repository_arn
+  dynamodb_table_arn = module.dynamodb.table_arn
+  session_table_name = module.dynamodb.table_name
 }

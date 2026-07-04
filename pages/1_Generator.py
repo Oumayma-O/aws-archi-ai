@@ -529,14 +529,15 @@ def _process_architect_message(user_message: str, model_id: str | None = None) -
             created for this session (see render_architect_mode).
     """
     from agents.events import AgentEvent, AgentEventType
-    from agents.orchestrator import OrchestratorAgent
+    from agents.remote import create_orchestrator
     from models.session import WorkflowPhase
 
     st.session_state.architect_processing = True
 
-    # Create or reuse the orchestrator agent
+    # Create or reuse the orchestrator (AgentCore Runtime when
+    # AGENTCORE_RUNTIME_ARN is configured, local Strands otherwise)
     if st.session_state.architect_session is None:
-        agent = OrchestratorAgent(model_id=model_id)
+        agent = create_orchestrator(model_id=model_id)
         st.session_state.architect_session = agent
     else:
         agent = st.session_state.architect_session

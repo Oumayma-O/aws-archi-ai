@@ -1,0 +1,28 @@
+# AgentCore Runtime payload — the agent workflow served over the
+# /invocations + /ping contract (agentcore/app.py).
+#
+# MUST be built for linux/arm64: AgentCore Runtime only runs ARM64 images.
+#   docker buildx build --platform linux/arm64 -f Dockerfile.agentcore .
+FROM --platform=linux/arm64 python:3.12-slim
+
+WORKDIR /app
+
+# graphviz for the diagram renderer (PNG generation inside the workflow)
+RUN apt-get update && apt-get install -y --no-install-recommends graphviz \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir aws-opentelemetry-distro
+
+COPY . .
+
+# AgentCore contract: HTTP on 8080
+EXPOSE 8080
+
+ENV AGENTCORE_ENABLED=false
+ENV SESSION_TABLE_NAME=architect-sessions
+
+# opentelemetry-instrument wires spans into AgentCore-native observability
+# (Transaction Search / GenAI dashboard — see scripts/enable-observability.sh)
+CMD ["opentelemetry-instrument", "python", "agentcore/app.py"]

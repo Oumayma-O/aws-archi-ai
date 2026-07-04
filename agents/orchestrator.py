@@ -147,16 +147,18 @@ class OrchestratorAgent:
                 return session
 
             logger.warning(
-                "Session %s not found; creating new session.", session_id
+                "Session %s not found; starting fresh under the same id.", session_id
             )
-            return Session()
+            # Keep the caller's id so persistence and AgentCore's
+            # runtimeSessionId stay aligned across microVM recycles.
+            return Session(session_id=session_id)
         except (SessionPersistenceError, Exception) as exc:
             logger.warning(
-                "Failed to load session %s: %s. Creating new session.",
+                "Failed to load session %s: %s. Starting fresh under the same id.",
                 session_id,
                 exc,
             )
-            return Session()
+            return Session(session_id=session_id)
 
     def get_session(self) -> Session:
         """Return the current session state."""

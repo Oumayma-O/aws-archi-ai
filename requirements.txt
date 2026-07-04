@@ -1,6 +1,6 @@
 # Core application dependencies
 streamlit==1.51.0
-boto3==1.39.7
+boto3==1.43.40  # >=1.43 required for the bedrock-agentcore data-plane client
 pydantic==2.11.3
 python-dotenv==1.1.0
 diagrams==0.24.4
@@ -9,6 +9,7 @@ PyYAML==6.0.2
 
 # Agentic layer dependencies
 strands-agents==1.45.0
+bedrock-agentcore==1.17.0
 strands-agents-tools==0.8.2
 opentelemetry-api==1.43.0
 opentelemetry-sdk==1.43.0

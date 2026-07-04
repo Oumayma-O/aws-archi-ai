@@ -39,3 +39,9 @@ variable "certificate_arn" {
   type        = string
   default     = ""
 }
+
+variable "enable_agentcore" {
+  description = "Provision the Bedrock AgentCore Runtime for the agent workflow (requires the :agentcore-latest ARM64 image in ECR first)"
+  type        = bool
+  default     = false
+}
