@@ -95,7 +95,12 @@ class TestToDrawioXml:
         ]
         result = to_drawio_xml(nodes, [])
         root = ET.fromstring(result)
-        vertex_cells = [c for c in root.iter("mxCell") if c.get("vertex") == "1"]
+        vertex_cells = [
+            c for c in root.iter("mxCell")
+            if c.get("vertex") == "1"
+            # exclude AWS Cloud / VPC container boxes
+            and "shape=mxgraph.aws4.group;" not in (c.get("style") or "")
+        ]
         assert len(vertex_cells) == 3
 
     def test_edge_count_in_xml(self) -> None:

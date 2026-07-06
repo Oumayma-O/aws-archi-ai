@@ -242,17 +242,60 @@ def _drawio_node_style(node: DiagramNode) -> str:
     )
 
 
+# Zone classification for container boxes. VPC-resident services get their
+# own column band so the VPC boundary box can never overlap non-members.
+_VPC_KEYWORDS = (
+    "ecs", "fargate", "ec2", "eks", "rds", "aurora", "elasticache", "redis",
+    "efs", "alb", "elb", "load balancer", "postgres", "mysql", "vpc",
+)
+_EXTERNAL_KEYWORDS = (
+    "user", "client", "external", "internet", "browser", "mobile",
+    "stripe", "paypal", "square", "github", "third-party", "third party",
+)
+
+_GROUP_STYLE_BASE = (
+    "points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],"
+    "[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];"
+    "outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;"
+    "fontStyle=0;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;"
+    "shape=mxgraph.aws4.group;verticalAlign=top;align=left;spacingLeft=30;dashed=0;"
+)
+_AWS_CLOUD_GROUP_STYLE = (
+    _GROUP_STYLE_BASE
+    + "grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;fontColor=#232F3E;"
+)
+_VPC_GROUP_STYLE = (
+    _GROUP_STYLE_BASE
+    + "grIcon=mxgraph.aws4.group_vpc2;strokeColor=#8C4FFF;fillColor=none;fontColor=#8C4FFF;"
+)
+
+
+def _node_zone(node: DiagramNode) -> str:
+    """Classify a node: 'external' (outside AWS), 'vpc', or 'cloud'."""
+    haystack = f"{node.aws_service} {node.label}".lower()
+    if any(kw in haystack for kw in _EXTERNAL_KEYWORDS):
+        return "external"
+    if any(kw in haystack for kw in _VPC_KEYWORDS):
+        return "vpc"
+    return "cloud"
+
+
 def _layered_positions(
     nodes: list[DiagramNode], connections: list[DiagramConnection]
-) -> dict[str, tuple[int, int]]:
+) -> tuple[dict[str, tuple[int, int]], dict[str, str]]:
     """Assign top-down layered positions via BFS from in-degree-0 roots.
 
     Mirrors the request flow of the PNG renderer: sources (Users, Route 53)
-    on top, data stores and monitoring toward the bottom. Prevents the
-    label-soup that a naive grid produces in the draw.io editor.
+    on top, data stores and monitoring toward the bottom. Within each row,
+    external + cloud nodes occupy the left band and VPC-resident nodes an
+    exclusive right band, so the VPC container box encloses only members.
+
+    Returns (positions, zone-by-node-id).
     """
     node_ids = [n.id for n in nodes]
     id_set = set(node_ids)
+    zones = {n.id: _node_zone(n) for n in nodes}
+
     adjacency: dict[str, list[str]] = {nid: [] for nid in node_ids}
     in_degree: dict[str, int] = {nid: 0 for nid in node_ids}
     for conn in connections:
@@ -284,17 +327,29 @@ def _layered_positions(
     for nid in node_ids:  # preserve node order within a layer
         layers.setdefault(layer_of[nid], []).append(nid)
 
-    x_spacing, y_spacing, icon_w = 220, 170, 78
-    widest = max(len(members) for members in layers.values())
-    canvas_center = (widest * x_spacing) // 2 + 60
+    x_spacing, y_spacing = 220, 170
+    left_x0, top_y0 = 80, 100
+
+    # Width of the left band = widest external+cloud row; the VPC band
+    # starts strictly to its right.
+    widest_left = max(
+        (len([n for n in members if zones[n] != "vpc"]) for members in layers.values()),
+        default=0,
+    )
+    vpc_x0 = left_x0 + max(widest_left, 1) * x_spacing + 60
 
     positions: dict[str, tuple[int, int]] = {}
     for layer, members in sorted(layers.items()):
-        row_width = (len(members) - 1) * x_spacing
-        start_x = canvas_center - row_width // 2 - icon_w // 2
-        for i, nid in enumerate(members):
-            positions[nid] = (start_x + i * x_spacing, 60 + layer * y_spacing)
-    return positions
+        y = top_y0 + layer * y_spacing
+        li = vi = 0
+        for nid in members:
+            if zones[nid] == "vpc":
+                positions[nid] = (vpc_x0 + vi * x_spacing, y)
+                vi += 1
+            else:
+                positions[nid] = (left_x0 + li * x_spacing, y)
+                li += 1
+    return positions, zones
 
 
 def to_drawio_xml(
@@ -319,7 +374,21 @@ def to_drawio_xml(
         return ""
 
     node_ids = {node.id for node in nodes}
-    positions = _layered_positions(nodes, connections)
+    positions, zones = _layered_positions(nodes, connections)
+    icon = 78
+    pad_side, pad_top, pad_bottom = 30, 45, 55  # room for group labels + node labels
+
+    def _bbox(ids: list[str]) -> tuple[int, int, int, int]:
+        xs = [positions[i][0] for i in ids]
+        ys = [positions[i][1] for i in ids]
+        x0 = min(xs) - pad_side
+        y0 = min(ys) - pad_top
+        x1 = max(xs) + icon + pad_side
+        y1 = max(ys) + icon + pad_bottom
+        return x0, y0, x1 - x0, y1 - y0
+
+    cloud_members = [n.id for n in nodes if zones[n.id] == "cloud"]
+    vpc_members = [n.id for n in nodes if zones[n.id] == "vpc"]
 
     # Build XML structure
     root = ET.Element("mxGraphModel")
@@ -329,8 +398,50 @@ def to_drawio_xml(
     ET.SubElement(root_cell, "mxCell", id="0")
     ET.SubElement(root_cell, "mxCell", id="1", parent="0")
 
+    def _emit_group(gid: str, label: str, style: str, parent: str,
+                    box: tuple[int, int, int, int], origin: tuple[int, int]) -> None:
+        cell = ET.SubElement(
+            root_cell, "mxCell",
+            id=gid, value=label, style=style, vertex="1", parent=parent,
+        )
+        ET.SubElement(
+            cell, "mxGeometry",
+            x=str(box[0] - origin[0]), y=str(box[1] - origin[1]),
+            width=str(box[2]), height=str(box[3]),
+        ).set("as", "geometry")
+
+    # Containers: AWS Cloud boundary around every AWS node; a VPC box (nested
+    # inside it) around VPC-resident services. Skipped when empty — a page of
+    # purely external nodes gets no boxes.
+    cloud_origin = vpc_origin = (0, 0)
+    have_cloud = bool(cloud_members or vpc_members)
+    if have_cloud:
+        cloud_box = _bbox(cloud_members + vpc_members)
+        if vpc_members:
+            # Grow the cloud box so the nested VPC box keeps its padding
+            vpc_box = _bbox(vpc_members)
+            x0 = min(cloud_box[0], vpc_box[0] - pad_side)
+            y0 = min(cloud_box[1], vpc_box[1] - pad_top)
+            x1 = max(cloud_box[0] + cloud_box[2], vpc_box[0] + vpc_box[2] + pad_side)
+            y1 = max(cloud_box[1] + cloud_box[3], vpc_box[1] + vpc_box[3] + pad_bottom)
+            cloud_box = (x0, y0, x1 - x0, y1 - y0)
+        _emit_group("group_aws_cloud", "AWS Cloud", _AWS_CLOUD_GROUP_STYLE, "1",
+                    cloud_box, (0, 0))
+        cloud_origin = (cloud_box[0], cloud_box[1])
+        if vpc_members:
+            _emit_group("group_vpc", "VPC", _VPC_GROUP_STYLE, "group_aws_cloud",
+                        vpc_box, cloud_origin)
+            vpc_origin = (vpc_box[0], vpc_box[1])
+
     for node in nodes:
         x, y = positions[node.id]
+        zone = zones[node.id]
+        if zone == "vpc":
+            parent, origin = "group_vpc", vpc_origin
+        elif zone == "cloud":
+            parent, origin = "group_aws_cloud", cloud_origin
+        else:
+            parent, origin = "1", (0, 0)
         cell = ET.SubElement(
             root_cell,
             "mxCell",
@@ -338,13 +449,13 @@ def to_drawio_xml(
             value=node.label,
             style=_drawio_node_style(node),
             vertex="1",
-            parent="1",
+            parent=parent,
         )
         ET.SubElement(
             cell,
             "mxGeometry",
-            x=str(x),
-            y=str(y),
+            x=str(x - origin[0]),
+            y=str(y - origin[1]),
             width="78",
             height="78",
         ).set("as", "geometry")

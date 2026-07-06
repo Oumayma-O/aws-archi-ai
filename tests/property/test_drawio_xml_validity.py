@@ -140,8 +140,14 @@ def test_drawio_xml_well_formed_with_correct_counts(
 
     all_cells = root_elem.findall("mxCell")
 
-    # Count vertex cells (nodes) - those with vertex="1"
-    vertex_cells = [c for c in all_cells if c.get("vertex") == "1"]
+    # Count vertex cells (nodes) - those with vertex="1". Container boxes
+    # (AWS Cloud / VPC boundaries) are extra vertices styled with the
+    # mxgraph.aws4.group shape — structural chrome, not nodes.
+    vertex_cells = [
+        c for c in all_cells
+        if c.get("vertex") == "1"
+        and "shape=mxgraph.aws4.group;" not in (c.get("style") or "")
+    ]
     # Count edge cells (connections) - those with edge="1"
     edge_cells = [c for c in all_cells if c.get("edge") == "1"]
 

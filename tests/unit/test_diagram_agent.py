@@ -134,7 +134,11 @@ class TestDiagramAgentLocalFallback:
         result = agent.generate(multi_node_report)
 
         root = ET.fromstring(result.drawio_xml)
-        cells = root.findall(".//mxCell[@vertex='1']")
+        cells = [
+            c for c in root.findall(".//mxCell[@vertex='1']")
+            # exclude AWS Cloud / VPC container boxes
+            if "shape=mxgraph.aws4.group;" not in (c.get("style") or "")
+        ]
         # Should have 3 node cells
         assert len(cells) == 3
 
