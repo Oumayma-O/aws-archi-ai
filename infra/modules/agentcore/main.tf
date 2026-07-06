@@ -82,6 +82,12 @@ resource "aws_iam_role_policy" "runtime" {
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock-agentcore/*"
       },
       {
+        Sid      = "PriceListRead"
+        Effect   = "Allow"
+        Action   = ["pricing:GetProducts", "pricing:DescribeServices", "pricing:GetAttributeValues"]
+        Resource = "*"
+      },
+      {
         Sid    = "Observability"
         Effect = "Allow"
         Action = [
@@ -122,10 +128,14 @@ resource "awscc_bedrockagentcore_runtime" "architect" {
   protocol_configuration = "HTTP"
 
   environment_variables = {
-    AWS_REGION         = var.aws_region
-    BEDROCK_MODEL_ID   = var.bedrock_model_id
-    SESSION_TABLE_NAME = var.session_table_name
-    RESEARCH_MAX_TURNS = "6"
-    MCP_DOCS_URL       = var.mcp_docs_url
+    AWS_REGION          = var.aws_region
+    BEDROCK_MODEL_ID    = var.bedrock_model_id
+    SESSION_TABLE_NAME  = var.session_table_name
+    RESEARCH_MAX_TURNS  = "6"
+    MCP_DOCS_URL        = var.mcp_docs_url
+    # Pricing server is pip-installed in the image (Dockerfile.agentcore);
+    # its stdio console script is spawned per session.
+    MCP_PRICING_COMMAND = var.mcp_pricing_command
+    MCP_DRAWIO_URL      = var.mcp_drawio_url
   }
 }

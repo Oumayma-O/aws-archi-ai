@@ -12,8 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends graphviz \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+# aws-pricing-mcp-server is baked into the image so MCP_PRICING_COMMAND can
+# exec its console script directly — no uvx download on microVM cold start.
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir aws-opentelemetry-distro
+    && pip install --no-cache-dir aws-opentelemetry-distro "awslabs.aws-pricing-mcp-server"
 
 COPY . .
 

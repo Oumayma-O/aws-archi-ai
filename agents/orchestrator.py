@@ -106,7 +106,10 @@ class OrchestratorAgent:
         self._clarification_agent = ClarificationAgent(model=fast_model)
         self._research_agent = ResearchAgent(model=fast_model, docs_mcp=docs_mcp, pricing_mcp=pricing_mcp)
         self._design_agent = DesignAgent(model=model)
-        self._diagram_agent = DiagramAgent(drawio_mcp=drawio_mcp)
+        # The Haiku model drives the draw.io MCP tool calls; without it the
+        # agent fell back to a hardcoded us-region model id that fails in
+        # eu-west-1, silently disabling the MCP diagram path.
+        self._diagram_agent = DiagramAgent(drawio_mcp=drawio_mcp, model=fast_model)
 
         # Session store for persistence
         self._session_store = SessionStore()

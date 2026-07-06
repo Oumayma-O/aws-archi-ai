@@ -47,15 +47,15 @@ class DiagramAgent:
     def __init__(
         self,
         drawio_mcp: "MCPClient | None" = None,
-        model: str | None = None,
+        model: "object | None" = None,
     ) -> None:
         """Initialize the DiagramAgent.
 
         Args:
             drawio_mcp: Optional MCP client for Draw.io diagram generation.
                 If None or connection fails, falls back to local rendering.
-            model: Optional model identifier for the Strands agent (unused in
-                fallback mode, reserved for future MCP-driven generation).
+            model: Strands model instance driving the draw.io MCP tool calls
+                (unused by the local deterministic renderer).
         """
         self.drawio_mcp = drawio_mcp
         self.model = model
@@ -121,13 +121,16 @@ class DiagramAgent:
                 f"Use official AWS icon stencils."
             )
 
-            # Invoke the MCP tool for diagram generation
+            # Invoke the MCP tool for diagram generation. self.model is the
+            # orchestrator-provided Strands model — required; a hardcoded
+            # fallback model id would target the wrong region.
+            if self.model is None:
+                logger.warning("No model configured for draw.io MCP path; using local renderer.")
+                return None
+
             from strands import Agent
 
-            agent = Agent(
-                tools=[self.drawio_mcp],
-                model=self.model or "us.anthropic.claude-sonnet-4-20250514",
-            )
+            agent = Agent(tools=[self.drawio_mcp], model=self.model)
             result = agent(diagram_prompt)
 
             # Extract XML from the agent response

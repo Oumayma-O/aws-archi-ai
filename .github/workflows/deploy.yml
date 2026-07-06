@@ -104,16 +104,21 @@ jobs:
             echo "No AgentCore runtime provisioned yet (terraform apply with enable_agentcore=true) — skipping."
             exit 0
           fi
-          ROLE_ARN=$(aws bedrock-agentcore-control get-agent-runtime \
-            --agent-runtime-id "$RUNTIME_ID" --region $AWS_REGION \
-            --query 'roleArn' --output text)
+          # update-agent-runtime REPLACES the full config — read the current
+          # role and environment variables (managed by Terraform) and pass
+          # them through, or every deploy would wipe the MCP settings.
+          CURRENT=$(aws bedrock-agentcore-control get-agent-runtime \
+            --agent-runtime-id "$RUNTIME_ID" --region $AWS_REGION)
+          ROLE_ARN=$(echo "$CURRENT" | jq -r '.roleArn')
+          ENV_VARS=$(echo "$CURRENT" | jq -c '.environmentVariables // {}')
           aws bedrock-agentcore-control update-agent-runtime \
             --agent-runtime-id "$RUNTIME_ID" \
             --role-arn "$ROLE_ARN" \
             --agent-runtime-artifact "{\"containerConfiguration\":{\"containerUri\":\"$ECR_REGISTRY/$ECR_REPOSITORY:agentcore-latest\"}}" \
             --network-configuration '{"networkMode":"PUBLIC"}' \
+            --environment-variables "$ENV_VARS" \
             --region $AWS_REGION >/dev/null
-          echo "✅ AgentCore runtime $RUNTIME_ID rolled to agentcore-latest"
+          echo "✅ AgentCore runtime $RUNTIME_ID rolled to agentcore-latest (env preserved)"
 
       - name: Deploy to ECS
         # Environment (SESSION_TABLE_NAME, AWS_REGION, …) lives in the task

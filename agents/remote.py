@@ -43,6 +43,7 @@ class RemoteOrchestrator:
 
     def __init__(self, session_id: str | None = None, model_id: str | None = None):
         import boto3
+        from botocore.config import Config
 
         self._arn = agentcore_runtime_arn()
         if not self._arn:
@@ -51,7 +52,19 @@ class RemoteOrchestrator:
         # AgentCore requires runtimeSessionId >= 33 chars; uuid4 is 36.
         self._session_id = session_id or str(uuid.uuid4())
         region = os.environ.get("AWS_REGION", "eu-west-1")
-        self._client = boto3.client("bedrock-agentcore", region_name=region)
+        # The design phase can stream nothing for 1-2 minutes (a single long
+        # Bedrock call inside the runtime). botocore's default 60s read
+        # timeout killed the SSE stream mid-silence — allow long quiet gaps
+        # and never auto-retry a partially consumed stream.
+        self._client = boto3.client(
+            "bedrock-agentcore",
+            region_name=region,
+            config=Config(
+                read_timeout=900,
+                connect_timeout=10,
+                retries={"max_attempts": 0},
+            ),
+        )
         self._session = _RemoteSession()
 
     def get_session(self) -> _RemoteSession:

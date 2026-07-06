@@ -38,3 +38,15 @@ variable "mcp_docs_url" {
   type        = string
   default     = "https://knowledge-mcp.global.api.aws"
 }
+
+variable "mcp_pricing_command" {
+  description = "stdio command for the AWS Pricing MCP server (baked into the image; empty disables)"
+  type        = string
+  default     = "awslabs.aws-pricing-mcp-server"
+}
+
+variable "mcp_drawio_url" {
+  description = "draw.io MCP endpoint (empty disables)"
+  type        = string
+  default     = "https://mcp.draw.io/mcp"
+}
