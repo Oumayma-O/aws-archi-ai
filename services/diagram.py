@@ -271,7 +271,17 @@ _VPC_GROUP_STYLE = (
 
 
 def _node_zone(node: DiagramNode) -> str:
-    """Classify a node: 'external' (outside AWS), 'vpc', or 'cloud'."""
+    """Resolve a node's boundary zone: 'external', 'vpc', or 'cloud'.
+
+    The design agent declares placement on each node (DiagramNode.zone) —
+    the model knows what it put in the VPC, so rendering honors its intent.
+    Keyword inference remains only as the fallback for nodes without a
+    declared zone (legacy reports, hand-built diagrams).
+    """
+    declared = (node.zone or "").strip().lower()
+    if declared in ("external", "vpc", "cloud"):
+        return declared
+
     haystack = f"{node.aws_service} {node.label}".lower()
     if any(kw in haystack for kw in _EXTERNAL_KEYWORDS):
         return "external"

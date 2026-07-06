@@ -11,6 +11,16 @@ class DiagramNode(BaseModel):
     aws_service: str = Field(
         description="AWS service type (e.g., 'EC2', 'S3', 'Lambda')"
     )
+    zone: str | None = Field(
+        default=None,
+        description=(
+            "Boundary placement declared by the designer: 'external' "
+            "(users, third parties — outside AWS), 'vpc' (VPC-resident: "
+            "ECS/EC2 tasks, RDS, ElastiCache, ALB, ...), or 'cloud' (AWS "
+            "regional services outside the VPC). None = infer from the "
+            "service name (legacy reports)."
+        ),
+    )
 
 
 class DiagramConnection(BaseModel):

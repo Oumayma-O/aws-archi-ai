@@ -38,6 +38,7 @@ COSTS
 
 DIAGRAM DATA
 - diagram.nodes/connections must show realistic traffic flow from a Users node through DNS/CDN/WAF to compute, data, auth, and monitoring. No orphan nodes.
+- Set `zone` on EVERY node — this drives the boundary boxes in the rendered diagram: "external" (users, third-party gateways, anything outside AWS), "vpc" (services you placed inside the VPC — must be consistent with vpc_design; a fully serverless design with vpc_design=null has NO "vpc" nodes), "cloud" (AWS regional services outside the VPC: S3, DynamoDB, CloudFront, Cognito, CloudWatch, ...).
 
 REPORT QUALITY
 - title: short and professional, derived from the workload — NEVER echo raw user phrases (a description like "skip" must never appear in the title).
