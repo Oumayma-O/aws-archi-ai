@@ -182,7 +182,12 @@ class TestEndToEndPipeline:
         # Verify node cells exist (one per node)
         all_cells = root.findall(".//mxCell")
         # 2 default cells + 6 node cells + 5 edge cells = 13
-        vertex_cells = [c for c in all_cells if c.get("vertex") == "1"]
+        vertex_cells = [
+            c for c in all_cells
+            if c.get("vertex") == "1"
+            # exclude AWS Cloud / VPC boundary containers
+            and "shape=mxgraph.aws4.group;" not in (c.get("style") or "")
+        ]
         edge_cells = [c for c in all_cells if c.get("edge") == "1"]
         assert len(vertex_cells) == 6
         assert len(edge_cells) == 5
