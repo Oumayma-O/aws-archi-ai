@@ -43,33 +43,15 @@ input, textarea, [data-testid="stMetricValue"] {{
 #MainMenu, footer, [data-testid="stAppDeployButton"] {{ display: none; }}
 .block-container {{ padding-top: 3.2rem; max-width: 62rem; }}
 
-/* ---- dark sidebar ---- */
-[data-testid="stSidebar"] {{
-    background: linear-gradient(180deg, {INK} 0%, #1B2735 100%);
-    border-right: none;
-}}
-[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3,
-[data-testid="stSidebar"] label, [data-testid="stSidebar"] p,
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
-[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {{
-    color: #E8ECF3 !important;
-}}
-/* page navigation links (Generator / History / Settings) */
-[data-testid="stSidebarNav"] a span,
-[data-testid="stSidebarNav"] a p {{
-    color: #E8ECF3 !important;
-    font-weight: 500;
-}}
+/* ---- sidebar enhancements ----
+   Base dark colors come from [theme.sidebar] in .streamlit/config.toml —
+   native theming paints server-side on first frame, which killed the
+   grey→dark flash the old CSS-injected background caused on page switch.
+   Only accents the theme can't express live here. */
+[data-testid="stSidebarNav"] a {{ font-weight: 500; }}
 [data-testid="stSidebarNav"] a:hover {{ background: rgba(255,255,255,.08); border-radius: 8px; }}
 [data-testid="stSidebarNav"] a[aria-current="page"] {{ background: rgba(255,153,0,.15); border-radius: 8px; }}
 [data-testid="stSidebarNav"] a[aria-current="page"] span {{ color: {ORANGE} !important; }}
-/* collapse / expand arrows */
-[data-testid="stSidebar"] [data-testid="stIconMaterial"],
-[data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"] {{
-    color: #E8ECF3;
-}}
-[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {{ color: #9FACC0 !important; }}
-[data-testid="stSidebar"] hr {{ border-color: rgba(255,255,255,.12); }}
 
 /* ---- buttons ---- */
 .stButton > button {{

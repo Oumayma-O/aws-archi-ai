@@ -15,3 +15,12 @@ backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F6F7F9"
 textColor = "#232F3E"
 font = "sans serif"
+
+# Sidebar rendered dark server-side from first paint — the previous
+# CSS-injected background caused a grey→dark flash on every page switch.
+[theme.sidebar]
+backgroundColor = "#1F2A3A"
+secondaryBackgroundColor = "#2C3E54"
+textColor = "#E8ECF3"
+primaryColor = "#FF9900"
+borderColor = "#3D4D63"
